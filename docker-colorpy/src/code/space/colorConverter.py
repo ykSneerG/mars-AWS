@@ -1,7 +1,7 @@
 import math
 
 from src.code.colorMath import CmMath
-from src.code.space.colorSpace import CsLAB, CsLCH, CsXYZ, CsRGB
+from src.code.space.colorSpace import CsLAB, CsLCH, CsSpectral, CsXYZ, CsRGB
 from src.code.space.colorConstants.illuminant import OBSERVER, Illuminant
 from src.code.space.colorConstants.matrixRGB import MatrixRGB2XYZ, MatrixXYZ2RGB
 from src.code.space.colorConstants.weightningFunctions import Cmf2deg, Cmf10deg
@@ -230,3 +230,16 @@ def __SRGBcompandingInvers(rgb: CsRGB) -> CsRGB:
     return CsRGB(sRGB[0], sRGB[1], sRGB[2])
 
 # -x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.
+
+def Cs_Spectral2Multi(values: list[CsSpectral]) -> list:
+    return [
+        {
+            "snm": [round(element, 4) for element in item],
+            "xyz": (xyz := CS_Spectral2XYZ(item, OBSERVER.DEG2)).to_json(2),
+            "hex": Cs_XYZ2RGB(xyz).to_hex(),
+            "lab": (lab := Cs_XYZ2LAB(xyz)).to_json(2),
+            "lch": Cs_Lab2LCH(lab).to_json(2),
+            "density": round(Cs_XYZ2Denisty(xyz), 2),
+        }
+        for item in values
+    ]

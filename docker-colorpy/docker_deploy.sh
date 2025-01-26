@@ -6,5 +6,9 @@ docker push 278507445325.dkr.ecr.eu-central-1.amazonaws.com/docker-colorpy:lates
 
 # Update Lambda functions
 aws lambda update-function-code --function-name mars-colorpy-predict-linearization --image-uri 278507445325.dkr.ecr.eu-central-1.amazonaws.com/docker-colorpy:latest --region eu-central-1 >> update_lambda.log 2>&1
+aws lambda update-function-code --function-name mars-colorpy-predict-linearization-V2 --image-uri 278507445325.dkr.ecr.eu-central-1.amazonaws.com/docker-colorpy:latest --region eu-central-1 >> update_lambda.log 2>&1
+aws lambda update-function-code --function-name mars-colorpy-predict-linearinterpolation --image-uri 278507445325.dkr.ecr.eu-central-1.amazonaws.com/docker-colorpy:latest --region eu-central-1 >> update_lambda.log 2>&1
+aws lambda update-function-code --function-name mars-colorpy-predict-linearization-V3 --image-uri 278507445325.dkr.ecr.eu-central-1.amazonaws.com/docker-colorpy:latest --region eu-central-1 >> update_lambda.log 2>&1
+
 
 echo "Lambda-Funktionen wurden erfolgreich aktualisiert."

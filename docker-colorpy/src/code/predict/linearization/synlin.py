@@ -129,7 +129,7 @@ class SynLinSolid:
 
     def calculate_loops(self, loops: int = 1) -> None:
         if (loops < 1):
-            raise ValueError('Loops must be greater than 1.')
+            raise ValueError('Loops must be greater than or equal to 1.')
 
         for i in range(loops):
             self.calculate()
