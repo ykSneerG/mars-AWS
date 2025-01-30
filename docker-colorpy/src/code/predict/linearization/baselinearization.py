@@ -47,6 +47,9 @@ class BaseLinearization:
         self.gradient = gradient
 
     def set_gradient_by_steps(self, subdivision: int) -> None | dict:
+        
+        # !!! MERGE with calculate_gradient_by_steps !!!
+        
         if subdivision <= 1:
             # raise ValueError("Subdivision must be greater than 1.")
             return "Subdivision must be greater than 1."
@@ -55,6 +58,16 @@ class BaseLinearization:
         ramp = [i * size for i in range(subdivision)]
 
         self.set_gradient(ramp)
+        
+    def calculate_gradient_by_steps(self, subdivision: int) -> None | dict:
+        if subdivision <= 1:
+            # raise ValueError("Subdivision must be greater than 1.")
+            return "Subdivision must be greater than 1."
+
+        size = 1 / (subdivision - 1)
+        ramp = [i * size for i in range(subdivision)]
+
+        return ramp
 
     def in_tolerance(self, actualValue, targetValue) -> bool:
         return abs(actualValue - targetValue) <= self.tolerance

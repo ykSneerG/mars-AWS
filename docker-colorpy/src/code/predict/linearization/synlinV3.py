@@ -1,5 +1,6 @@
 import math
-from src.code.space.colorConverter import Cs_Spectral2Multi
+from src.code.space.colorSpace import CsXYZ
+from src.code.space.colorConverter import Cs_Spectral2Multi, CS_Spectral2XYZ
 from src.code.predict.linearization.baselinearization import BaseLinearization
 
 
@@ -50,19 +51,27 @@ class SynLinSolidV3(BaseLinearization):
         
         # generate initial concentration and corrections
         cSolid = [(c ** cFactor) for c in self.gradient]
-        cMedia = [(1 - c) for c in self.gradient] 
+        #cMedia = [(1 - c) for c in self.gradient] 
+        cMedia = [(1 - c) for c in cSolid] 
         
         for i in range(LENC):
             ksMix = Optcolor.ksMixWithConcentrations( ksMedia, ksSolid, cMedia[i], cSolid[i] )
             spectrals[i] = Optcolor.ksToSnm(ksMix)
             
         colors = spectrals if not invert else spectrals[::-1]
+        
+        
+        """ mixXYZ: list[CsXYZ] = [CS_Spectral2XYZ(spectrals[i]) for i in range(LENC)]
+        sctvs: list[CsXYZ] = [Optcolor.calculate_sctv(mixXYZ[0], mixXYZ[i], mixXYZ[-1]) for i in range(LENC)] """
 
         return {
             "color": Cs_Spectral2Multi(colors),
             "ramp": self.gradient,
             "cMedia": cMedia,
-            "cSolid": cSolid
+            "cSolid": cSolid,
+            #"sctvs": sctvs,
+            "version": "MARS.3.001"
+            
         }
 
 
@@ -87,3 +96,17 @@ class Optcolor:
     @staticmethod
     def ksToSnm(ks: list[float]) -> list[float]:
         return [1 + x - math.sqrt(x ** 2 + 2 * x) for x in ks]
+    
+    @staticmethod
+    def calculate_sctv(xyz_p: CsXYZ, xyz_t: CsXYZ, xyz_s: CsXYZ):
+        numerator = (
+            (xyz_t.X - xyz_p.X) ** 2 + 
+            (xyz_t.Y - xyz_p.Y) ** 2 + 
+            (xyz_t.Z - xyz_p.Z) ** 2
+        )
+        denominator = (
+            (xyz_s.X - xyz_p.X) ** 2 + 
+            (xyz_s.Y - xyz_p.Y) ** 2 + 
+            (xyz_s.Z - xyz_p.Z) ** 2
+        )
+        return math.sqrt(numerator / denominator)

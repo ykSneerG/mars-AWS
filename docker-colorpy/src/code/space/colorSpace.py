@@ -3,6 +3,7 @@ import math
 from typing import Union
 
 from src.code.colorMath import CmMath
+import numpy as np # type: ignore
 
 
 MINVAL_CS_RGB = 0
@@ -122,11 +123,14 @@ class CsXYZ(CsBase):
             self.Z * MAXVAL_CS_XYZ
         )
 
-    def to_density(self):
+    def to_density(self) -> float:
         """
         Returns the density value of a CsXYZ color.
         """
         return -math.log10(self.Y / 100)
+    
+    def to_numpy(self):
+        return np.array([self.X, self.Y, self.Z])
 
 
 class CsRGB(CsBase):

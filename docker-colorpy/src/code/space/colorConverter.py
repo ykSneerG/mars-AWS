@@ -239,7 +239,7 @@ def Cs_Spectral2Multi(values: list[CsSpectral]) -> list:
             "hex": Cs_XYZ2RGB(xyz).to_hex(),
             "lab": (lab := Cs_XYZ2LAB(xyz)).to_json(2),
             "lch": Cs_Lab2LCH(lab).to_json(2),
-            "density": round(Cs_XYZ2Denisty(xyz), 2),
+            #"density": round(Cs_XYZ2Denisty(xyz), 2),
         }
         for item in values
     ]

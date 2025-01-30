@@ -1,13 +1,9 @@
-""" 
-from src.handlers import CurveLinkHandler
+from src.handlersPredict import Predict_SynlinV4_Handler
 
-def lambda_handler_curvelink(event, context):
-    handler = CurveLinkHandler(event, context)
-    return handler.handle()
-"""
 
 import time
 from src.error import status_error
+
 
 from src.code.predict.linearization.synlin import SynLinSolid
 def lh_predict_linearization(event, context):
@@ -145,3 +141,8 @@ def lh_predict_linearization_v3(event, context):
         'statusCode': 200,
         'result': res
     }
+  
+
+def lh_predict_linearization_v4(event, context):
+    handler = Predict_SynlinV4_Handler(event, context)
+    return handler.handle()
