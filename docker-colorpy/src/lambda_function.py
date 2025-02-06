@@ -1,9 +1,11 @@
 from src.handlersPredict import Predict_SynlinV4_Handler, Predict_LinearInterpolation_Handler
+from src.handlersFiles import Files_CgatsToJson_Handler
 
 
 import time
 from src.error import status_error
 
+# - - - PREDICT - - -
 
 from src.code.predict.linearization.synlin import SynLinSolid
 def lh_predict_linearization(event, context):
@@ -83,6 +85,13 @@ def lh_predict_linearization_v4(event, context):
     return handler.handle()
 
 
+# - - - FILE - - -
+def lf_files_cgats2json(event, context):
+    handler = Files_CgatsToJson_Handler(event, context)
+    return handler.handle()
+
+
+# - - - SAMPLE - - -
 
 def lh_sample_color_spectral(event, context):
     pass
