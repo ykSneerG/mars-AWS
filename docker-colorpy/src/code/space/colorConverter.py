@@ -1,10 +1,11 @@
 import math
+import numpy as np #type: ignore
 
 from src.code.colorMath import CmMath
 from src.code.space.colorSpace import CsLAB, CsLCH, CsSpectral, CsXYZ, CsRGB
 from src.code.space.colorConstants.illuminant import OBSERVER, Illuminant
 from src.code.space.colorConstants.matrixRGB import MatrixRGB2XYZ, MatrixXYZ2RGB
-from src.code.space.colorConstants.weightningFunctions import Cmf2deg, Cmf10deg
+from src.code.space.colorConstants.weightningFunctions import Cmf2deg, Cmf10deg, Cmf2degNumpy, Cmf10degNumpy
 
 
 CIE_E = 0.008856
@@ -170,6 +171,71 @@ def CS_Spectral2XYZ(curveNM: list[float], observer: OBSERVER = OBSERVER.DEG2) ->
         xyz.Z += cmf.WZ[i] * wavelength
 
     return xyz
+
+
+def CS_Spectral2XYZ_Numpy(curveNM: np.ndarray, observer: OBSERVER = OBSERVER.DEG2) -> np.ndarray:
+    """
+    Spectral Data (380-730nm in 10nm steps) to XYZ Color (default: D50, 2 deg.)
+
+    :param curveNM: np.ndarray with 36 wavelengths (380-730nm in 10nm steps)
+    :param observer: "Deg2" or "Deg10" specifies the color matching functions.
+    """
+
+    if observer == OBSERVER.DEG2:
+        cmf_weights = Cmf2degNumpy.weights
+    elif observer == OBSERVER.DEG10:
+        cmf_weights = Cmf10degNumpy.weights
+    else:
+        raise ValueError("observer must be '2deg' or '10deg'")
+    
+    return cmf_weights @ curveNM
+
+# DELETE
+def CS_Spectral2XYZ_Numpy_OLD(curveNM: np.ndarray, observer: OBSERVER = OBSERVER.DEG2) -> np.ndarray:
+    """
+    Spectral Data (380-730nm in 10nm steps) to XYZ Color (default: D50, 2 deg.)
+
+    :param curveNM: array with 36 wavelengths (380-730nm in 10nm steps)
+    :param observer: "Deg2" or "Deg10" specifies the color matching functions.
+    """
+
+    if observer == OBSERVER.DEG2:
+        cmf_weights = Cmf2degNumpy.cmf_weights
+    elif observer == OBSERVER.DEG10:
+        cmf_weights = Cmf10degNumpy.cmf_weights
+    else:
+        raise ValueError("observer must be '2deg' or '10deg'")
+    
+    #reflectance = np.asarray(curveNM, dtype=np.float64)
+    
+    """ return np.array([
+        np.sum(cmf.WX * reflectance),
+        np.sum(cmf.WY * reflectance),
+        np.sum(cmf.WZ * reflectance)
+    ]) """
+    
+    #cmf_weights = np.vstack([cmf.WX, cmf.WY, cmf.WZ]) # Stack CMF weights into a 3×36 matrix
+    #cmf_weights = cmf.cmf_weights
+
+    #return cmf_weights @ np.asarray(curveNM, dtype=np.float64)
+    return cmf_weights @ curveNM
+    #return cmf_weights @ reflectance
+
+    """ def CS_Spectral2XYZ(curveNM: list[float], observer: OBSERVER = OBSERVER.DEG2) -> CsXYZ:
+    # ... (input validation and observer selection logic remains the same)
+
+    # Convert to NumPy arrays
+    reflectance = np.asarray(curveNM, dtype=np.float64)
+    cmf_weights = np.vstack([  # Stack CMF weights into a 3×36 matrix
+        np.asarray(cmf.WX, dtype=np.float64),
+        np.asarray(cmf.WY, dtype=np.float64),
+        np.asarray(cmf.WZ, dtype=np.float64)
+    ])
+
+    # Single-step calculation: matrix multiplication (3×36) × (36×1) = (3×1)
+    xyz_components = cmf_weights @ reflectance  # Equivalent to np.sum(cmf_weights * reflectance, axis=1)
+
+    return CsXYZ(*xyz_components) """
 
 
 # -x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.

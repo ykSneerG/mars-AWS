@@ -59,6 +59,9 @@ class CsLAB(CsBase):
         Calculates the chroma of the color.
         """
         return math.sqrt(self.A ** 2 + self.B ** 2)
+    
+    def to_numpy(self):
+        return np.array([self.L, self.A, self.B])
 
 
 class CsLCH(CsBase):
@@ -90,7 +93,7 @@ class CsLCH(CsBase):
 
 
 class CsXYZ(CsBase):
-
+    
     def __init__(self, xyz_X: float, xyz_Y: float, xyz_Z: float) -> None:
         if (
             not isinstance(xyz_X, (float, int)) or

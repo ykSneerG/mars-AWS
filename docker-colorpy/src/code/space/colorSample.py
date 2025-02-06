@@ -9,12 +9,40 @@ class SampleSpectral:
     c7 = [0.00693,0.007275,0.008984,0.01228,0.01965,0.03107,0.04908,0.07929,0.1346,0.2425,0.3942,0.5308,0.6312,0.6738,0.6632,0.6243,0.5676,0.4887,0.3913,0.2926,0.194,0.1043,0.0388,0.009636,0.002669,0.00151,0.001288,0.001219,0.001411,0.00178,0.002346,0.003792,0.006523,0.008653,0.008735,0.00877]
     c8 = [0.1318,0.203,0.2639,0.3236,0.4224,0.4915,0.5059,0.4835,0.4341,0.3646,0.2704,0.1627,0.08235,0.03925,0.01772,0.01113,0.01096,0.01171,0.01154,0.01331,0.02227,0.04705,0.07916,0.08605,0.0682,0.06774,0.1097,0.2053,0.3413,0.4774,0.5907,0.6739,0.733,0.7702,0.7932,0.8104]
 
+    """     
+    sam = [
+        {'name': 'white', 'data': c1},
+        {'name': 'cyan', 'data': c2},
+        {'name': 'magenta', 'data': c3},
+        {'name': 'yellow', 'data': c4},
+        {'name': 'black', 'data': c5},
+        {'name': 'orange', 'data': c6},
+        {'name': 'green', 'data': c7},
+        {'name': 'violet', 'data': c8}
+    ] 
+    """
+    
+    samC1 = {'name': 'white', 'data': c1}
+    samC2 = {'name': 'cyan', 'data': c2}
+    samC3 = {'name': 'magenta', 'data': c3}
+    samC4 = {'name': 'yellow', 'data': c4}
+    samC5 = {'name': 'black', 'data': c5}
+    samC6 = {'name': 'orange', 'data': c6}
+    samC7 = {'name': 'green', 'data': c7}
+    samC8 = {'name': 'violet', 'data': c8}
+
 
     def __init__(self):
-        self.spectral = [self.c1, self.c2, self.c3, self.c4, self.c5, self.c6, self.c7, self.c8]
+        self.spectral = [self.samC1, self.samC2, self.samC3, self.samC4, self.samC5, self.samC6, self.samC7, self.samC8]
         
     def get_list(self):
         return self.spectral
+    
+    def get_name(self, idx):
+        return self.spectral[idx]['name']
+    
+    def get_data(self, idx):
+        return self.spectral[idx]['data']
     
     def get_idx(self, idx):
         return self.spectral[idx]

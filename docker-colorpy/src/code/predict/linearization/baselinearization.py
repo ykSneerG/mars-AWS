@@ -22,6 +22,11 @@ class BaseLinearization:
 
         self.tolerance: float = 0.5
         self.maxLoops = 100
+        
+        self.debug = False
+        
+    def set_debug(self, value: bool) -> None:
+        self.debug = value
 
     def set_media(self, media):
         self.media = media

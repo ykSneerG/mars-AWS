@@ -16,7 +16,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Installiere Python-Bibliotheken
 RUN pip install --upgrade pip
-RUN pip install awslambdaric boto3 botocore numpy
+RUN pip install awslambdaric boto3 botocore numpy scipy
 
 # Setze den Arbeitsverzeichnis
 WORKDIR /app

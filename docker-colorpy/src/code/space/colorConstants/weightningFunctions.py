@@ -1,3 +1,5 @@
+import numpy as np #type: ignore
+
 class Cmf2deg:
     """
     ### Weightning function: 380-730nm in 10nm steps for Illuminant D50 and Observer 2°
@@ -18,7 +20,7 @@ class Cmf2deg:
           2.466, 1.447, 0.736, 0.401, 0.196, 0.085, 0.037, 0.020, 0.015, 0.010,
           0.007, 0.004, 0.002, 0.001, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
           0.000, 0.000, 0.000, 0.000]
-
+      
 
 class Cmf10deg:
     """
@@ -40,3 +42,18 @@ class Cmf10deg:
           1.796, 0.919, 0.501, 0.263, 0.114, 0.031, -0.003, 0.001, 0.000, 0.000,
           0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
           0.000, 0.000, 0.000, 0.000]
+
+
+class Cmf2degNumpy:
+      WX = np.asarray(Cmf2deg.WX, dtype=np.float64)
+      WY = np.asarray(Cmf2deg.WY, dtype=np.float64)
+      WZ = np.asarray(Cmf2deg.WZ, dtype=np.float64)
+      
+      weights = np.vstack([WX, WY, WZ])
+      
+class Cmf10degNumpy:
+      WX = np.asarray(Cmf10deg.WX, dtype=np.float64)
+      WY = np.asarray(Cmf10deg.WY, dtype=np.float64)
+      WZ = np.asarray(Cmf10deg.WZ, dtype=np.float64)
+      
+      weights = np.vstack([WX, WY, WZ])
