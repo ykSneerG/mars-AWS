@@ -39,6 +39,9 @@ class BaseLinearization:
 
     def set_max_loops(self, max_loops: int) -> None:
         self.maxLoops = max_loops
+        
+    def set_destination_types(self, values: list) -> None:
+        self.destination_types = values
 
     @property
     def tolerance(self):
@@ -52,16 +55,7 @@ class BaseLinearization:
         self.gradient = gradient
 
     def set_gradient_by_steps(self, subdivision: int) -> None | dict:
-        
-        # !!! MERGE with calculate_gradient_by_steps !!!
-        
-        if subdivision <= 1:
-            # raise ValueError("Subdivision must be greater than 1.")
-            return "Subdivision must be greater than 1."
-
-        size = 1 / (subdivision - 1)
-        ramp = [i * size for i in range(subdivision)]
-
+        ramp = self.calculate_gradient_by_steps(subdivision)
         self.set_gradient(ramp)
         
     def calculate_gradient_by_steps(self, subdivision: int) -> None | dict:

@@ -97,7 +97,7 @@ class SynLinSolidV4a(BaseLinearization):
             est_cSolid[j] = mid  # Assign final optimized value
 
         response = {
-            "color": Cs_Spectral2Multi(estimat_SNM),
+            "color": Cs_Spectral2Multi(estimat_SNM, self.destination_types),
             "ramp": [round(elem, 2) for elem in self.gradient],
             "cSolid": [round(elem, 4) for elem in est_cSolid],
             "tolerance": self.tolerance,

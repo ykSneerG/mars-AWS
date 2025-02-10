@@ -297,7 +297,11 @@ def __SRGBcompandingInvers(rgb: CsRGB) -> CsRGB:
 
 # -x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.-x-.
 
-def Cs_Spectral2Multi(values: list[CsSpectral]) -> list:
+def Cs_Spectral2Multi_OLD(values: list[CsSpectral], incl_dst_values = None) -> list:
+    
+    incl_XYZ = True if incl_dst_values["XYZ"] == 'true' else False
+    incl_LAB = True if incl_dst_values["LAB"] == 'true' else False
+    
     return [
         {
             "snm": [round(element, 4) for element in item],
@@ -309,3 +313,37 @@ def Cs_Spectral2Multi(values: list[CsSpectral]) -> list:
         }
         for item in values
     ]
+
+def Cs_Spectral2Multi(values: list[CsSpectral], incl_dst_values = None) -> list:
+    incl_XYZ = incl_dst_values.get("XYZ", False) == True
+    incl_LAB = incl_dst_values.get("LAB", False) == True
+    incl_HEX = incl_dst_values.get("HEX", False) == True
+    incl_LCH = incl_dst_values.get("LCH", False) == True
+    #incl_SNM = incl_dst_values.get("SNM", "false") == 'true'
+
+    result = []
+    for item in values:
+        
+        tmp_SNM = item
+
+        if(incl_XYZ or incl_LAB or incl_LCH or incl_HEX):
+            tmp_SNM = [round(element, 4) for element in item]
+            tmp_XYZ = CS_Spectral2XYZ(tmp_SNM, OBSERVER.DEG2)
+            tmp_HEX = Cs_XYZ2RGB(tmp_XYZ).to_hex()
+            tmp_LAB = Cs_XYZ2LAB(tmp_XYZ)
+            tmp_LCH = Cs_Lab2LCH(tmp_LAB)
+        
+        entry = {
+            "snm": tmp_SNM,
+        }
+        if incl_LCH:
+            entry["lch"] = tmp_LCH.to_json(2)
+        if incl_HEX:
+            entry["hex"] = tmp_HEX
+        if incl_XYZ:
+            entry["xyz"] = tmp_XYZ.to_json(2)
+        if incl_LAB:
+            entry["lab"] = tmp_LAB.to_json(2)
+            
+        result.append(entry)
+    return result
