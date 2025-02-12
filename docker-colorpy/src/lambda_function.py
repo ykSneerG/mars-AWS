@@ -40,7 +40,6 @@ def lh_predict_linearization(event, context):
         'result': res
     }
     
-    
 from src.code.predict.linearization.synlinV2 import SynLinSolidV2
 def lh_predict_linearization_v2(event, context):
     

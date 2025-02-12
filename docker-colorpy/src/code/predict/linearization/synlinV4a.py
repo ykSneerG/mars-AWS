@@ -96,13 +96,12 @@ class SynLinSolidV4a(BaseLinearization):
 
             est_cSolid[j] = mid  # Assign final optimized value
 
+        color = Cs_Spectral2Multi(estimat_SNM, self.destination_types)
+        """ for i in range(len(self.gradient)):
+            color[i].update({ "dcs": [self.gradient[i]] }) """
+
         response = {
-            "color": Cs_Spectral2Multi(estimat_SNM, self.destination_types),
-            "ramp": [round(elem, 2) for elem in self.gradient],
-            "cSolid": [round(elem, 4) for elem in est_cSolid],
-            "tolerance": self.tolerance,
-            "precision": self.precision,
-            "version": "MARS.4a.082",
+            "color": color,
         }
         
         if self.debug:
@@ -115,6 +114,11 @@ class SynLinSolidV4a(BaseLinearization):
                 "curve_length": ce.curve_length,
                 "nps": [nps[i].tolist() for i in range(len(nps))],
                 "space": self.space,
+                "ramp": [round(elem, 2) for elem in self.gradient],
+                "cSolid": [round(elem, 4) for elem in est_cSolid],
+                "tolerance": self.tolerance,
+                "precision": self.precision,
+                "version": "MARS.4a.082"
             })
         
         return response
