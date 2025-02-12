@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+""" from concurrent.futures import ThreadPoolExecutor """
 from typing import Any
 from src.handlers import BaseLambdaHandler
 from src.code.predict.linearization.linearInterpolation import LinearInterpolation
@@ -36,250 +36,284 @@ class Predict_LinearInterpolation_Handler(BaseLambdaHandler):
         return self.get_common_response(jd)
 
 
-class Predict_SynlinV4_Handler(BaseLambdaHandler):
+""" 
+FROM HERE ONWARDS, THE CODE USES THE SynLinSolidV4a CLASS to predict n-dimensional colors.
+"""
 
-    def handle(self):
-
-        jd = {}
-
-        media = self.event["media"]
-        solid = self.event["solid"]
-        steps = int(self.event.get("steps", 5))
-        iters = int(self.event.get("iterations", 1))
-        toler = float(self.event.get("tolerance", 0.004))
-        preci = int(self.event.get("precision", 3))
-        """ cfact = float(self.event.get('correction', 4.5)) """
-        debug = self.event.get("debug", False)
-        space = self.event.get("space", "XYZ")
-
+class SlsHelper:
+    
+    @staticmethod
+    def evalEvent(event):
+        steps = int(event.get("steps", 5))
+        toler = float(event.get("tolerance", 0.004))
+        preci = int(event.get("precision", 3))
+        debug = event.get("debug", False)
+        space = event.get("space", "XYZ")
+        return (debug, space, preci, toler, steps)
+    
+    @staticmethod
+    def initClass(debug, space, preci, toler):
         sls = SynLinSolidV4a()
-        sls.set_destination_types({ "LCH": True, "HEX": True, "SNM": True })
         sls.set_debug(debug)
         sls.set_space(space)
-        """ sls.set_places = int(event.get('round', 3))  """
         sls.set_precision(preci)
-
-        sls.set_media(media)
-        sls.set_solid(solid)
-
-        err = sls.set_gradient_by_steps(steps)
-        if err:
-            return self.get_error_response(err)
-
-        # sls.set_gradient([0.0, 50.0, 100.0])
+        sls.set_destination_types(
+            {"XYZ": False, "LAB": False, "LCH": False, "HEX": False, "SNM": True}
+        )
         sls.tolerance = toler
-        sls.set_max_loops(iters)
-        """ sls.setCorrection(cfact) """
-        # res: dict[str, Any] = sls.start()
+        return sls
+
+    @staticmethod
+    def mix_concentration(sls, color1, color2, concentration):
+        sls.set_gradient([concentration])
+        sls.set_media(color1)
+        sls.set_solid(color2)
         res: dict[str, Any] = sls.start_Curve3D()
+        return res["color"][0]["snm"]
 
-        jd.update(res)
+    @staticmethod
+    def mix_1to1(sls, color1, color2):
+        return SlsHelper.mix_concentration(sls, color1, color2, 0.5)
 
-        jd.update({"elapsed": self.get_elapsed_time()})
+    @staticmethod
+    def mix_2to1(sls, color1, color2):
+        return SlsHelper.mix_concentration(sls, color1, color2, 0.67)
+
+    @staticmethod
+    def mix_3to1(sls, color1, color2):
+        return SlsHelper.mix_concentration(sls, color1, color2, 0.75)
+
+    @staticmethod
+    def mix_all(sls, color1, color2, steps):
+        sls.set_gradient_by_steps(steps)
+        sls.set_media(color1)
+        sls.set_solid(color2)
+        res: dict[str, Any] = sls.start_Curve3D()
+        return [item["snm"] for item in res["color"]]
+    
+    """ @staticmethod
+    def process_colors(params, i, rail):
+        
+        (debug, space, preci, toler, steps) = params
+        
+        sls = SlsHelper.initClass(debug, space, preci, toler)
+        sls.set_destination_types({"SNM": True, "LCH": True, "HEX": True})
+        sls.set_gradient_by_steps(steps)
+        sls.set_media(rail[0][i])
+        sls.set_solid(rail[1][i])
+        res = sls.start_Curve3D()
+        return res["color"]
+
+    @staticmethod
+    def process_all_colors(params, rail):
+        rail_length = len(rail[0])
+
+        with ThreadPoolExecutor() as executor:
+            colors = np.array(
+                list(executor.map(lambda i: SlsHelper.process_colors(params, i, rail), range(rail_length)))
+            ).ravel().tolist()
+
+        return colors """
+    
+    @staticmethod
+    def process_colors_batch(params, rail):
+        (debug, space, preci, toler, steps) = params
+        sls = SlsHelper.initClass(debug, space, preci, toler)
+        sls.set_destination_types({"SNM": True, "LCH": True, "HEX": True})
+        sls.set_gradient_by_steps(steps)
+        
+        colors = [
+            value
+            for media, solid in zip(rail[0], rail[1])
+            if (sls.set_media(media) or True) and (sls.set_solid(solid) or True)
+            for value in sls.start_Curve3D()["color"]
+        ]
+        
+        return colors
+
+
+class Predict_SynlinV4_Handler(BaseLambdaHandler):
+    
+    def handle(self):
+        
+        (debug, space, preci, toler, STEPS) = SlsHelper.evalEvent(self.event)
+        
+        SLS_PARAMS = (debug, space, preci, toler, STEPS)
+        
+        jd = {}
+        
+        """
+        1.	No ink (substrate color)
+        2.	C (Cyan)
+        """
+
+        c1 = self.event["media"]                   # (W)
+        c2 = self.event["solid"]                   # (C)
+        
+        # --- 2. PREDICT RAIL ---
+        
+        rail = [[c1], [c2]]
+        
+        # --- 3. PREDICT COLORS ---
+                
+        jd.update({ "color": SlsHelper.process_colors_batch(SLS_PARAMS, rail) })
+
+        jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)
 
 
 class Predict_SynAreaV4_Handler(BaseLambdaHandler):
 
     def handle(self):
+        
+        (debug, space, preci, toler, STEPS) = SlsHelper.evalEvent(self.event)
+        
+        SLS_PARAMS = (debug, space, preci, toler, STEPS)
+        
+        sls = SlsHelper.initClass(debug, space, preci, toler)
 
         jd = {}
+        
+        """
+        1.	No ink (substrate color)
+        2.	C (Cyan)
+        3.	M (Magenta)
+        4.	C + M (Blue)
+        """
 
-        c1 = self.event["c1"]
-        c2 = self.event["c2"]
-        c3 = self.event["c3"]
-        """ c4 = self.event['c4'] """
+        c1 = self.event["c1"]                   # (W)
+        c2 = self.event["c2"]                   # (C)
+        c3 = self.event["c3"]                   # (M)
+        c4 = SlsHelper.mix_1to1(sls, c2, c3)    # (C) + (M)
 
-        steps = int(self.event.get("steps", 5))
-        iters = int(self.event.get("iterations", 1))
-        toler = float(self.event.get("tolerance", 0.004))
-        preci = int(self.event.get("precision", 3))
-        """ cfact = float(self.event.get('correction', 4.5)) """
-        debug = self.event.get("debug", False)
-        space = self.event.get("space", "XYZ")
+        # --- 1. PREDICT TOWER ---
+        
+        edges = [[c1, c2], [c3, c4]]
 
-        def initClass():
-            sls = SynLinSolidV4a()
-            sls.set_destination_types({ "SNM": True })
-            sls.set_debug(debug)
-            sls.set_space(space)
-            sls.set_precision(preci)
-            err = sls.set_gradient_by_steps(steps)
-            if err:
-                return self.get_error_response(err)
-            sls.tolerance = toler
-            return sls
+        # --- 2. PREDICT RAIL ---
 
-        sls = initClass()
-        sls.set_gradient_by_steps(3)
-        sls.set_media(c2)
-        sls.set_solid(c3)
-        res: dict[str, Any] = sls.start_Curve3D()
-        c4 = res["color"][1]["snm"]
+        rail = [
+            SlsHelper.mix_all(sls, edges[0][0], edges[1][0], STEPS),
+            SlsHelper.mix_all(sls, edges[0][1], edges[1][1], STEPS)   
+        ]
 
-        media = [c1, c2]
-        solid = [c3, c4]
-
-        rail = []
-        for i in range(len(media)):
-            sls = initClass()
-            sls.set_media(media[i])
-            sls.set_solid(solid[i])
-            res: dict[str, Any] = sls.start_Curve3D()
-            rail.append(res)
-
-        def process_colors(i):
-            sls = initClass()
-            sls.set_destination_types({ "SNM": True, "LCH": True, "HEX": True })
-            sls.set_media(rail[0]["color"][i]["snm"])
-            sls.set_solid(rail[1]["color"][i]["snm"])
-            res = sls.start_Curve3D()
-            return res["color"]
-
-        with ThreadPoolExecutor() as executor:
-            colors = (
-                np.array(
-                    list(executor.map(process_colors, range(len(rail[0]["color"]))))
-                )
-                .ravel()
-                .tolist()
-            )
-
-            jd.update({"color": colors})
-
-        jd.update({"elapsed": self.get_elapsed_time()})
+        # --- 3. PREDICT COLORS ---
+        
+        jd.update({ "color": SlsHelper.process_colors_batch(SLS_PARAMS, rail) })
+            
+        jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)
 
 
 class Predict_SynVolumeV4_Handler(BaseLambdaHandler):
 
     def handle(self):
+        
+        (debug, space, preci, toler, STEPS) = SlsHelper.evalEvent(self.event)
+        
+        SLS_PARAMS = (debug, space, preci, toler, STEPS)
+        
+        sls = SlsHelper.initClass(debug, space, preci, toler)
 
         jd = {}
+        
+        """
+        1.	No ink (substrate color)
+        2.	C (Cyan)
+        3.	M (Magenta)
+        4.	Y (Yellow)
+        5.	C + M (Blue)
+        6.	C + Y (Green)
+        7.	M + Y (Red)
+        8.	C + M + Y (Process Black)
+        """
 
-        c1 = self.event["c1"]
-        c2 = self.event["c2"]
-        c3 = self.event["c3"]
-        """ c4 = self.event['c4'] """
-        c5 = self.event["c5"]
+        c1 = self.event["c1"]                   # (W)
+        c2 = self.event["c2"]                   # (C)
+        c3 = self.event["c3"]                   # (M)
+        c4 = SlsHelper.mix_1to1(sls, c2, c3)    # (C) + (M)
+        c5 = self.event["c5"]                   # (Y)
+        c6 = SlsHelper.mix_1to1(sls, c2, c5)    # (C) + (Y)
+        c7 = SlsHelper.mix_2to1(sls, c4, c5)    # (C + M) + (Y)
+        c8 = SlsHelper.mix_1to1(sls, c3, c5)    # (M) + (Y)
 
-        steps = int(self.event.get("steps", 5))
-        iters = int(self.event.get("iterations", 1))
-        toler = float(self.event.get("tolerance", 0.004))
-        preci = int(self.event.get("precision", 3))
-        """ cfact = float(self.event.get('correction', 4.5)) """
-        debug = self.event.get("debug", False)
-        space = self.event.get("space", "XYZ")
+        # --- 1. PREDICT TOWER ---
 
-        def initClass():
-            sls = SynLinSolidV4a()
-            sls.set_debug(debug)
-            sls.set_space(space)
-            sls.set_precision(preci)
-
-            sls.set_destination_types({ "XYZ": False, "LAB": False, "LCH": False, "HEX": False, "SNM": True })
-
-            err = sls.set_gradient_by_steps(steps)
-            if err:
-                return self.get_error_response(err)
-            sls.tolerance = toler
-            return sls
-
-        # --- 1. PREDICT c4 by mixing c2 and c3 ---
-        # after this the four corners of the area are defined, where c1 is treated as the substrate color
-
-        sls = initClass()
-        sls.set_gradient_by_steps(3)
-        sls.set_media(c2)
-        sls.set_solid(c3)
-        res: dict[str, Any] = sls.start_Curve3D()
-        c4 = res["color"][1]["snm"]
-
-        media = [c1, c2]
-        solid = [c3, c4]
-
-        # --- 2. PREDICT TOWER ---
-        # predict the corner colors of the top area, where c5 is located
-        # tower 15, 25, 35, 45
-
-        # Tower Corners c5, c6, c7, c8
-
-        sls = initClass()
-        sls.set_gradient_by_steps(3)
-        sls.set_media(c2)
-        sls.set_solid(c5)
-        res: dict[str, Any] = sls.start_Curve3D()
-        c6 = res["color"][1]["snm"]
-
-        sls = initClass()
-        sls.set_gradient_by_steps(3)
-        sls.set_media(c4)
-        sls.set_solid(c5)
-        res: dict[str, Any] = sls.start_Curve3D()
-        c7 = res["color"][1]["snm"]
-
-        sls = initClass()
-        sls.set_gradient_by_steps(3)
-        sls.set_media(c3)
-        sls.set_solid(c5)
-        res: dict[str, Any] = sls.start_Curve3D()
-        c8 = res["color"][1]["snm"]
-
-        towercorner = [[c1, c5], [c3, c8], [c2, c6], [c4, c7]]
-
-        towergradient = []
-        for i in range(len(towercorner)):
-            sls = initClass()
-            sls.set_media(towercorner[i][0])
-            sls.set_solid(towercorner[i][1])
-            res: dict[str, Any] = sls.start_Curve3D()
-            towergradient.append(res["color"])
-
-        # jd.update({ "tower": towergradient })
-
-        """ tower_L = [[c1, c5], [c3, c8]]
-        toler_R = [[c2, c6], [c4, c7]] """
+        edges = [[c1, c5], [c3, c8], [c2, c6], [c4, c7]]
+        tower = [SlsHelper.mix_all(sls, edge[0], edge[1], STEPS) for edge in edges]
 
         # --- 2. PREDICT RAIL ---
-        # the left rail is defined by c1 and c3, the right rail by c2 and c4
 
-        rail = [[], []]
-        for i in range(len(towergradient[0])):
-            sls = initClass()
-            sls.set_media(towergradient[0][i]["snm"])
-            sls.set_solid(towergradient[1][i]["snm"])
-            res: dict[str, Any] = sls.start_Curve3D()
-            for item in res["color"]:
-                rail[0].append(item["snm"])
+        TG_LENGTH = len(tower[0])
+        rail = [
+            [item for i in range(TG_LENGTH) for item in SlsHelper.mix_all(sls, tower[0][i], tower[1][i], STEPS)],
+            [item for i in range(TG_LENGTH) for item in SlsHelper.mix_all(sls, tower[2][i], tower[3][i], STEPS)]
+        ]
+        
+        # --- 3. PREDICT COLORS ---
+            
+        jd.update({ "color": SlsHelper.process_colors_batch(SLS_PARAMS, rail) })
 
-            sls = initClass()
-            sls.set_media(towergradient[2][i]["snm"])
-            sls.set_solid(towergradient[3][i]["snm"])
-            res: dict[str, Any] = sls.start_Curve3D()
-            for item in res["color"]:
-                rail[1].append(item["snm"])
+        jd.update({ "elapsed": self.get_elapsed_time() })
+        return self.get_common_response(jd)
 
-        # jd.update({ "rail": rail })
+
+class Predict_SynHyperFourV4_Handler(BaseLambdaHandler):
+    
+    def handle(self):
+        
+        (debug, space, preci, toler, STEPS) = SlsHelper.evalEvent(self.event)
+        
+        SLS_PARAMS = (debug, space, preci, toler, STEPS)
+        
+        sls = SlsHelper.initClass(debug, space, preci, toler)
+
+        jd = {}
+        
+        c1 = self.event["c1"]                   # (W)
+        c2 = self.event["c2"]                   # (C)
+        c3 = self.event["c3"]                   # (M)
+        c4 = self.event["c4"]                   # (Y)
+        c5 = self.event["c5"]                   # (K)
+        c6 = SlsHelper.mix_1to1(sls, c2, c3)    # (C) + (M)
+        c7 = SlsHelper.mix_1to1(sls, c2, c4)    # (C) + (Y)
+        c8 = SlsHelper.mix_1to1(sls, c2, c5)    # (C) + (K)
+        c9 = SlsHelper.mix_1to1(sls, c3, c4)    # (M) + (Y)
+        c10 = SlsHelper.mix_1to1(sls, c3, c5)   # (M) + (K)
+        c11 = SlsHelper.mix_1to1(sls, c4, c5)   # (Y) + (K)
+        c12 = SlsHelper.mix_2to1(sls, c6, c4)   # (C + M) + (Y)
+        c13 = SlsHelper.mix_2to1(sls, c6, c5)   # (C + M) + (K)
+        c14 = SlsHelper.mix_2to1(sls, c7, c5)   # (C + Y) + (K)
+        c15 = SlsHelper.mix_2to1(sls, c9, c5)   # (M + Y) + (K)
+        c16 = SlsHelper.mix_3to1(sls, c12, c5)  # (C + M + Y) + (K)
+        
+        # --- 1. PREDICT TOWER ---
+        
+        edges_T = [[c4, c11], [c7, c14], [c12, c16], [c9, c15]]
+        edges_D = [[c1, c5], [c2, c8], [c6, c13], [c3, c10]]
+        
+        interpolated_edges_T = [SlsHelper.mix_all(sls, edge[0], edge[1], STEPS) for edge in edges_T]
+        interpolated_edges_D = [SlsHelper.mix_all(sls, edge[0], edge[1], STEPS) for edge in edges_D]
+        
+        ENTRY_LENGTH = len(interpolated_edges_T[0])
+        EDGES_LENGTH = len(interpolated_edges_T)
+        
+        tower = [[] for _ in range(EDGES_LENGTH)]
+        for i in range(ENTRY_LENGTH):
+            for j in range(EDGES_LENGTH):
+                tower[j].extend(SlsHelper.mix_all(sls, interpolated_edges_D[j][i], interpolated_edges_T[j][i], STEPS))
+        
+        # --- 2. PREDICT RAIL ---
+
+        TG_LENGTH = len(tower[0])
+        rail = [
+            [item for i in range(TG_LENGTH) for item in SlsHelper.mix_all(sls, tower[0][i], tower[1][i], STEPS)],
+            [item for i in range(TG_LENGTH) for item in SlsHelper.mix_all(sls, tower[3][i], tower[2][i], STEPS)]
+        ]
 
         # --- 3. PREDICT COLORS ---
-        # the colors are predicted by mixing the colors of the left and right rail
-
-        def process_colors(i):
-            sls = initClass()
-            sls.set_destination_types({ "SNM": True, "LCH": True, "HEX": True })
-            sls.set_media(rail[0][i])
-            sls.set_solid(rail[1][i])
-            res = sls.start_Curve3D()
-            return res["color"]
-
-        with ThreadPoolExecutor() as executor:
-            colors = (
-                np.array(list(executor.map(process_colors, range(len(rail[0])))))
-                .ravel()
-                .tolist()
-            )
-
-            jd.update({"color": colors})
-
-        jd.update({"elapsed": self.get_elapsed_time()})
+            
+        jd.update({ "color": SlsHelper.process_colors_batch(SLS_PARAMS, rail) })
+        
+        jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)

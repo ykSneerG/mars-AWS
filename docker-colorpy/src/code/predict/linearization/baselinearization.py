@@ -28,14 +28,11 @@ class BaseLinearization:
     def set_debug(self, value: bool) -> None:
         self.debug = value
 
-    def set_media(self, media):
+    def set_media(self, media) -> None:
         self.media = media
 
-    def set_solid(self, solid):
+    def set_solid(self, solid) -> None:
         self.solid = solid
-
-    """ def set_places(self, places: int) -> None:
-        self.places = places """
 
     def set_max_loops(self, max_loops: int) -> None:
         self.maxLoops = max_loops
@@ -44,14 +41,14 @@ class BaseLinearization:
         self.destination_types = values
 
     @property
-    def tolerance(self):
+    def tolerance(self) -> float:
         return self._tolerance
 
     @tolerance.setter
-    def tolerance(self, value: float):
+    def tolerance(self, value: float) -> None:
         self._tolerance: float = value
 
-    def set_gradient(self, gradient: list):
+    def set_gradient(self, gradient: list) -> None:
         self.gradient = gradient
 
     def set_gradient_by_steps(self, subdivision: int) -> None | dict:
@@ -60,7 +57,6 @@ class BaseLinearization:
         
     def calculate_gradient_by_steps(self, subdivision: int) -> None | dict:
         if subdivision <= 1:
-            # raise ValueError("Subdivision must be greater than 1.")
             return "Subdivision must be greater than 1."
 
         size = 1 / (subdivision - 1)

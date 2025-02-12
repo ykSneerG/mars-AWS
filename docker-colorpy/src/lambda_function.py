@@ -1,4 +1,4 @@
-from src.handlersPredict import Predict_SynlinV4_Handler, Predict_LinearInterpolation_Handler, Predict_SynAreaV4_Handler, Predict_SynVolumeV4_Handler
+from src.handlersPredict import Predict_SynlinV4_Handler, Predict_LinearInterpolation_Handler, Predict_SynAreaV4_Handler, Predict_SynVolumeV4_Handler, Predict_SynHyperFourV4_Handler
 from src.handlersFiles import Files_CgatsToJson_Handler
 
 
@@ -90,6 +90,10 @@ def lh_predict_aera_v4(event, context):
 
 def lh_predict_volume_v4(event, context):
     handler = Predict_SynVolumeV4_Handler(event, context)
+    return handler.handle()
+
+def lh_predict_4dimensional_v4(event, context):
+    handler = Predict_SynHyperFourV4_Handler(event, context)
     return handler.handle()
 
 
