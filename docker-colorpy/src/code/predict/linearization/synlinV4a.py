@@ -24,7 +24,7 @@ class SynLinSolidV4a(BaseLinearization):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.precision = 2
+        self.precision = 100
         self.space = 'XYZ'
 
     def set_precision(self, value: int):

@@ -20,7 +20,7 @@ class BaseLinearization:
 
         """ self.places = 4 """
 
-        self.tolerance: float = 0.5
+        self.tolerance: float = 0.00025
         self.maxLoops = 100
         
         self.debug = False

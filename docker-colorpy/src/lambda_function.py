@@ -1,5 +1,6 @@
 from src.handlersPredict import Predict_SynlinV4_Handler, Predict_LinearInterpolation_Handler, Predict_SynAreaV4_Handler, Predict_SynVolumeV4_Handler, Predict_SynHyperFourV4_Handler
 from src.handlersFiles import Files_CgatsToJson_Handler
+from src.handlersSpace import Space_SampleSpectral_Handler
 
 
 import time
@@ -98,6 +99,7 @@ def lh_predict_4dimensional_v4(event, context):
 
 
 # - - - FILE - - -
+
 def lf_files_cgats2json(event, context):
     handler = Files_CgatsToJson_Handler(event, context)
     return handler.handle()
@@ -106,4 +108,5 @@ def lf_files_cgats2json(event, context):
 # - - - SAMPLE - - -
 
 def lh_sample_color_spectral(event, context):
-    pass
+    handler = Space_SampleSpectral_Handler(event, context)
+    return handler.handle()

@@ -81,14 +81,14 @@ class SlsHelper:
     @staticmethod
     def evalEvent(event):
         steps = int(event.get("steps", 5))
-        toler = float(event.get("tolerance", 0.004))
-        preci = int(event.get("precision", 3))
+        toler = float(event.get("tolerance", 0.00025))
+        preci = int(event.get("precision", 100))
         debug = event.get("debug", False)
         space = event.get("space", "XYZ")
         return (debug, space, preci, toler, steps)
     
     @staticmethod
-    def initClass(debug, space, preci, toler):
+    def initClass(debug, space, preci = 100, toler = 0.00025):
         sls = SynLinSolidV4a()
         sls.set_debug(debug)
         sls.set_space(space)
@@ -183,8 +183,8 @@ class Predict_SynlinV4_Handler(BaseLambdaHandler):
         2.	C (Cyan)
         """
 
-        c1 = self.event["media"]                   # (W)
-        c2 = self.event["solid"]                   # (C)
+        c1 = self.event["c1"]                   # (W)
+        c2 = self.event["c2"]                   # (C)
         
         # --- 2. PREDICT RAIL ---
         
