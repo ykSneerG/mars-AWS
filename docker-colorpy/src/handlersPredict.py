@@ -3,6 +3,7 @@ from typing import Any
 from src.handlers import BaseLambdaHandler
 from src.code.predict.linearization.linearInterpolation import LinearInterpolation
 from src.code.predict.linearization.synlinV4a import SynLinSolidV4a
+from src.code.space.colorConverter import Cs_Spectral2Multi
 
 import numpy as np  # type: ignore
 
@@ -79,13 +80,23 @@ class GradientMixGenerator:
 class SlsHelper:
     
     @staticmethod
+    def apply_dynamic_factor(values, alpha=0.75, value_range=(0, 100)):
+        min_val, max_val = value_range
+        scaled = (np.array(values) - min_val) / (max_val - min_val)
+        adjusted = scaled ** alpha
+        result = adjusted * (max_val - min_val) + min_val
+        return result
+
+    
+    @staticmethod
     def evalEvent(event):
         steps = int(event.get("steps", 5))
         toler = float(event.get("tolerance", 0.00025))
         preci = int(event.get("precision", 100))
         debug = event.get("debug", False)
         space = event.get("space", "XYZ")
-        return (debug, space, preci, toler, steps)
+        darkf = event.get("darken", 0.0)
+        return (debug, space, preci, toler, steps, darkf)
     
     @staticmethod
     def initClass(debug, space, preci = 100, toler = 0.00025):
@@ -100,24 +111,37 @@ class SlsHelper:
         return sls
 
     @staticmethod
-    def mix_concentration(sls: SynLinSolidV4a, color1, color2, concentration):
+    def mix_concentration(sls: SynLinSolidV4a, color1, color2, concentration, darken=0.0):
         sls.set_gradient([concentration])
         sls.set_media(color1)
         sls.set_solid(color2)
         res: dict[str, Any] = sls.start_Curve3D()
-        return res["color"][0]["snm"]
+        snm =  res["color"][0]["snm"]
+        
+        if darken > 0.0:
+            """
+            factor = 1.0 - darken
+            snm = [factor * item for item in snm]
+            """ 
+            
+            result = Cs_Spectral2Multi([snm], {"LCH": True})
+            lchl_normalized = result[0]["lch"]["L"] / 100
+            factor = (1 - lchl_normalized) ** (darken)
+            snm = [factor * item for item in snm]
+            
+        return snm
 
     @staticmethod
-    def mix_1to1(sls, color1, color2):
-        return SlsHelper.mix_concentration(sls, color1, color2, 0.5)
+    def mix_1to1(sls, color1, color2, darken=0.0):
+        return SlsHelper.mix_concentration(sls, color1, color2, 0.5, darken)
 
     @staticmethod
-    def mix_2to1(sls, color1, color2):
-        return SlsHelper.mix_concentration(sls, color1, color2, 0.67)
+    def mix_2to1(sls, color1, color2, darken=0.0):
+        return SlsHelper.mix_concentration(sls, color1, color2, 0.67, darken)
 
     @staticmethod
-    def mix_3to1(sls, color1, color2):
-        return SlsHelper.mix_concentration(sls, color1, color2, 0.75)
+    def mix_3to1(sls, color1, color2, darken=0.0):
+        return SlsHelper.mix_concentration(sls, color1, color2, 0.75, darken)
 
     @staticmethod
     def mix_all(sls, color1, color2, steps):
@@ -172,7 +196,7 @@ class Predict_SynlinV4_Handler(BaseLambdaHandler):
     
     def handle(self):
         
-        (debug, space, preci, toler, STEPS) = SlsHelper.evalEvent(self.event)
+        (debug, space, preci, toler, STEPS, darkf) = SlsHelper.evalEvent(self.event)
         
         SLS_PARAMS = (debug, space, preci, toler, STEPS)
         
@@ -183,8 +207,8 @@ class Predict_SynlinV4_Handler(BaseLambdaHandler):
         2.	C (Cyan)
         """
 
-        c1 = self.event["c1"]                   # (W)
-        c2 = self.event["c2"]                   # (C)
+        c1 = self.event["c1"]   # (W)
+        c2 = self.event["c2"]   # (C)
         
         # --- 2. PREDICT RAIL ---
         
@@ -198,7 +222,6 @@ class Predict_SynlinV4_Handler(BaseLambdaHandler):
         dcs = GradientMixGenerator.generate_dcs(dcs_gradient, 1)
         for i in range(len(jd["color"])):
             jd["color"][i].update({ "dcs": dcs[i] })
-        #jd.update({ "dcs": dcs })
         
         jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)
@@ -208,7 +231,7 @@ class Predict_SynAreaV4_Handler(BaseLambdaHandler):
 
     def handle(self):
         
-        (debug, space, preci, toler, STEPS) = SlsHelper.evalEvent(self.event)
+        (debug, space, preci, toler, STEPS, darkf) = SlsHelper.evalEvent(self.event)
         
         SLS_PARAMS = (debug, space, preci, toler, STEPS)
         
@@ -241,7 +264,6 @@ class Predict_SynAreaV4_Handler(BaseLambdaHandler):
         dcs = GradientMixGenerator.generate_dcs(dcs_gradient, 2)
         for i in range(len(jd["color"])):
             jd["color"][i].update({ "dcs": dcs[i] })
-        #jd.update({ "dcs": dcs })
             
         jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)
@@ -251,7 +273,7 @@ class Predict_SynVolumeV4_Handler(BaseLambdaHandler):
 
     def handle(self):
         
-        (debug, space, preci, toler, STEPS) = SlsHelper.evalEvent(self.event)
+        (debug, space, preci, toler, STEPS, darkf) = SlsHelper.evalEvent(self.event)
         
         SLS_PARAMS = (debug, space, preci, toler, STEPS)
         
@@ -269,15 +291,7 @@ class Predict_SynVolumeV4_Handler(BaseLambdaHandler):
         c8 = SlsHelper.mix_2to1(sls, c5, c4)    # (C + M) + (Y)
 
         # --- 1. PREDICT TOWER ---
-        # edges = [[c1, c3], [c2, c4]]
-        # edges = [[c1, c2], [c3, c4], [c5, c6], [c7, c8]]
-        
-        #edges = [[c1, c3], [c2, c4], [c5, c6], [c7, c8]]
-        # edges = [[c1, c5], [c2, c6], [c3, c7], [c4, c8]]
-        
-        #edges = [[c1, c5], [c3, c7], [c2, c6], [c4, c8]]
-        # #edges = [[c1, c4], [c2, c6], [c5, c8], [c3, c7]]
-        
+                
                 #[[W, C],  [M, CM],  [MY, CMY],[Y, CY]]
         edges = [[c1, c2], [c3, c5], [c7, c8], [c4, c6]]
 
@@ -301,17 +315,15 @@ class Predict_SynVolumeV4_Handler(BaseLambdaHandler):
         dcs = GradientMixGenerator.generate_dcs(dcs_gradient, 3)
         for i in range(len(jd["color"])):
             jd["color"][i].update({ "dcs": dcs[i] })
-        #jd.update({ "dcs": dcs })
 
         jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)
-
 
 class Predict_SynHyperFourV4_Handler(BaseLambdaHandler):
     
     def handle(self):
         
-        (debug, space, preci, toler, STEPS) = SlsHelper.evalEvent(self.event)
+        (debug, space, preci, toler, STEPS, darkf) = SlsHelper.evalEvent(self.event)
         
         SLS_PARAMS = (debug, space, preci, toler, STEPS)
         
@@ -319,36 +331,28 @@ class Predict_SynHyperFourV4_Handler(BaseLambdaHandler):
 
         jd = {}
         
-        c1 = self.event["c1"]                   # (W)
-        c2 = self.event["c2"]                   # (C)
-        c3 = self.event["c3"]                   # (M)
-        c4 = self.event["c4"]                   # (Y)
-        c5 = self.event["c5"]                   # (K)
-        c6 = SlsHelper.mix_1to1(sls, c2, c3)    # (C) + (M)
-        c7 = SlsHelper.mix_1to1(sls, c2, c4)    # (C) + (Y)
-        c8 = SlsHelper.mix_1to1(sls, c2, c5)    # (C) + (K)
-        c9 = SlsHelper.mix_1to1(sls, c3, c4)    # (M) + (Y)
-        c10 = SlsHelper.mix_1to1(sls, c3, c5)   # (M) + (K)
-        c11 = SlsHelper.mix_1to1(sls, c4, c5)   # (Y) + (K)
-        c12 = SlsHelper.mix_2to1(sls, c6, c4)   # (C + M) + (Y)
-        c13 = SlsHelper.mix_2to1(sls, c6, c5)   # (C + M) + (K)
-        c14 = SlsHelper.mix_2to1(sls, c7, c5)   # (C + Y) + (K)
-        c15 = SlsHelper.mix_2to1(sls, c9, c5)   # (M + Y) + (K)
-        c16 = SlsHelper.mix_3to1(sls, c12, c5)  # (C + M + Y) + (K)
+        c1  = self.event.get("c1")                                             # (W)
+        c2  = self.event.get("c2")                                             # (C)
+        c3  = self.event.get("c3")                                             # (M)
+        c4  = self.event.get("c4")                                             # (Y)
+        c5  = self.event.get("c5")                                             # (K)
+        c6  = self.event.get("c6",  SlsHelper.mix_1to1(sls, c2, c3, darkf))    # (C) + (M)
+        c7  = self.event.get("c7",  SlsHelper.mix_1to1(sls, c2, c4, darkf))    # (C) + (Y)
+        c8  = self.event.get("c8",  SlsHelper.mix_1to1(sls, c2, c5, darkf))    # (C) + (K)
+        c9  = self.event.get("c9",  SlsHelper.mix_1to1(sls, c3, c4, darkf))    # (M) + (Y)
+        c10 = self.event.get("c10", SlsHelper.mix_1to1(sls, c3, c5, darkf))    # (M) + (K)
+        c11 = self.event.get("c11", SlsHelper.mix_1to1(sls, c4, c5, darkf))    # (Y) + (K)
+        c12 = self.event.get("c12", SlsHelper.mix_2to1(sls, c6, c4, darkf))    # (C + M) + (Y)
+        c13 = self.event.get("c13", SlsHelper.mix_2to1(sls, c6, c5, darkf))    # (C + M) + (K)
+        c14 = self.event.get("c14", SlsHelper.mix_2to1(sls, c7, c5, darkf))    # (C + Y) + (K)
+        c15 = self.event.get("c15", SlsHelper.mix_2to1(sls, c9, c5, darkf))    # (M + Y) + (K)
+        c16 = self.event.get("c16", SlsHelper.mix_3to1(sls, c12, c5, darkf))   # (C + M + Y) + (K)
         
         # --- 1. PREDICT TOWER ---
         
-        """ edges_T = [[c4, c11], [c7, c14], [c12, c16], [c9, c15]]
-        edges_D = [[c1, c5], [c2, c8], [c6, c13], [c3, c10]] """
-        
-        """          # [[C, CM], [CY, CMY],  [YK, MYK],  [K, MK]]
-        edges_T = [[c2, c6], [c7, c12], [c14, c16], [c8, c13]]
-                # [[W, M],  [Y, MY],  [YK, MYK],  [K, MK]]
-        edges_D = [[c1, c3], [c4, c9], [c11, c15], [c5, c10]] """
-        
-                 # [[M, CM], [MY, CMY], [MYK, CMYK], [MK, MCK]]
+                # [[M, CM],  [MY, CMY], [MYK, CMYK],[MK, MCK]]
         edges_T = [[c3, c6], [c9, c12], [c15, c16], [c10, c13]]
-                # [[W, C],  [Y, CY],  [YK, CYK],  [K, CK]]
+                # [[W, C],   [Y, CY],  [YK, CYK],  [K, CK]]
         edges_D = [[c1, c2], [c4, c7], [c11, c14], [c5, c8]]
         
         interpolated_edges_T = [SlsHelper.mix_all(sls, edge[0], edge[1], STEPS) for edge in edges_T]
@@ -378,7 +382,6 @@ class Predict_SynHyperFourV4_Handler(BaseLambdaHandler):
         dcs = GradientMixGenerator.generate_dcs(dcs_gradient, 4)
         for i in range(len(jd["color"])):
             jd["color"][i].update({ "dcs": dcs[i] })
-        #jd.update({ "dcs": dcs })
         
         jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)

@@ -7,8 +7,24 @@ from src.code.space.colorConverter import CS_Spectral2XYZ, Cs_XYZ2LAB, Cs_Lab2XY
 from src.code.space.colorSpace import CsLCH, CsSpectral, CsXYZ, CsLAB
 from src.code.space.colorConstants.illuminant import OBSERVER, Illuminant
 
-
 from src.handlers import BaseLambdaHandler
+
+
+def neugebauer_sort(colors):
+    # Function to calculate the weight of the color (how many color channels are active)
+    def color_weight(dcs):
+        return sum(1 for val in dcs if val > 0)
+
+    # Sort by color weight first, then by primary color values in the order: C > M > Y > K
+    def sort_key(color):
+        dcs = color['dcs']
+        weight = color_weight(dcs)
+        return (weight, [-val for val in dcs])  # Negative to sort descending
+
+    # Sort the colors
+    colors.sort(key=sort_key)
+
+    return colors
 
 
 class Files_CgatsToJson_Handler(BaseLambdaHandler):
@@ -22,7 +38,12 @@ class Files_CgatsToJson_Handler(BaseLambdaHandler):
             # Extract values from the JSON part
             txt_value = json_data.get("txt", "")
             fid_value = json_data.get("fid", "")
+            doublets_average = json_data.get("doublets_average", False)
+            doublets_remove = json_data.get("doublets_remove", False)
             observer_value = json_data.get("observer", OBSERVER.DEG2)
+            
+            reduction_type = json_data.get("reduction_type", None)
+            
             inclDCS_value = json_data.get("inclDCS", False)
             inclLAB_value = json_data.get("inclLAB", False)
             inclLCH_value = json_data.get("inclLCH", False)
@@ -62,6 +83,73 @@ class Files_CgatsToJson_Handler(BaseLambdaHandler):
                 result = self.xyzColor(pcs_values, dcs_values)
             elif cgats_typePCS == "LAB":
                 result = self.labColor(pcs_values, dcs_values)
+
+                      
+            if doublets_average:
+                from collections import defaultdict
+
+                dcs_map = defaultdict(list)
+
+                for item in result:
+                    dcs_key = item.get("dcs")
+                    if isinstance(dcs_key, list):  
+                        dcs_key = tuple(dcs_key)  # Convert lists to tuples for hashing
+                    dcs_map[dcs_key].append(item)
+
+                averaged_result = [
+                    {"snm": [sum(values) / len(values) for values in zip(*[x["snm"] for x in items])], "dcs": dcs}
+                    if dcs is not None and len(items) > 1 else items[0]
+                    for dcs, items in dcs_map.items()
+                ]
+
+                result[:] = self.snmToXyz(
+                    [x["snm"] for x in averaged_result], 
+                    [x.get("dcs") for x in averaged_result], 
+                    observer_value
+                )
+            
+            if doublets_remove:
+                seen_dcs = set()
+                removed_result = []
+
+                for item in result:
+                    try:
+                        dcs_key = item["dcs"]
+                        if isinstance(dcs_key, list):  # Ensure hashability
+                            dcs_key = tuple(dcs_key)
+                    except KeyError:
+                        removed_result.append(item)
+                        continue
+
+                    if dcs_key not in seen_dcs:
+                        seen_dcs.add(dcs_key)
+                        removed_result.append(item)
+
+                # Modify result in-place using slice assignment (faster in AWS Lambda)
+                result[:] = removed_result
+
+
+            if reduction_type == "corner":
+                mylist = [
+                    element for element in result 
+                    if all(dcs == 100 or dcs == 0 for dcs in element['dcs'])
+                ]
+                result = neugebauer_sort(mylist)
+                
+            if reduction_type == "full":
+                mylist = [
+                    element for element in result 
+                    if all(dcs == 100 or dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 100
+                ]
+                result = neugebauer_sort(mylist)
+
+            if reduction_type == "substrate":
+                mylist = [
+                    element for element in result 
+                    if all(dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 0
+                ]
+                result = neugebauer_sort(mylist)
+                
 
             jd.update({"result": result})
             jd.update({"elapsed": self.get_elapsed_time()})

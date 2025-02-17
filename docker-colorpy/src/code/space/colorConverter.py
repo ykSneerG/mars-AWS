@@ -314,7 +314,7 @@ def Cs_Spectral2Multi_OLD(values: list[CsSpectral], incl_dst_values = None) -> l
         for item in values
     ]
 
-def Cs_Spectral2Multi(values: list[CsSpectral], incl_dst_values = None) -> list:
+def Cs_Spectral2Multi(values: list, incl_dst_values = None) -> list:
     incl_XYZ = incl_dst_values.get("XYZ", False) == True
     incl_LAB = incl_dst_values.get("LAB", False) == True
     incl_HEX = incl_dst_values.get("HEX", False) == True
