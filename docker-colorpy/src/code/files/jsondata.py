@@ -2,7 +2,7 @@
 import random
 from enum import Enum
 from src.code.files.cgatsConstants import CgatsConstants
-from src.code.space.colorConverter import CS_Spectral2LAB, CS_Spectral2LCH, CsXYZ2LCH
+from src.code.space.colorConverter import CS_Spectral2LAB, CS_Spectral2LCH, Cs_XYZ2LCH
 from src.code.space.colorSpace import CsLAB, CsXYZ
 
 
@@ -167,7 +167,7 @@ class JsonDataSorter:
             return sorted(self.data, key=lambda x: x['pcs'][0], reverse=True)
 
         elif self.pcs_type == CgatsConstants.XYZ_TPLS[0]:
-            return sorted(self.data, key=lambda x: CsXYZ2LCH(CsXYZ(x['pcs'][0], x['pcs'][1], x['pcs'][2])).L, reverse=True)
+            return sorted(self.data, key=lambda x: Cs_XYZ2LCH(CsXYZ(x['pcs'][0], x['pcs'][1], x['pcs'][2])).L, reverse=True)
 
     def sort_chroma(self):
         if self.pcs_type == CgatsConstants.LAB_TPLS[0]:
@@ -180,7 +180,7 @@ class JsonDataSorter:
             return sorted(self.data, key=lambda x: x['pcs'][1])
 
         elif self.pcs_type == CgatsConstants.XYZ_TPLS[0]:
-            return sorted(self.data, key=lambda x: CsXYZ2LCH(CsXYZ(x['pcs'][0], x['pcs'][1], x['pcs'][2])).C)
+            return sorted(self.data, key=lambda x: Cs_XYZ2LCH(CsXYZ(x['pcs'][0], x['pcs'][1], x['pcs'][2])).C)
 
     def sort_hue(self):
         if self.pcs_type == CgatsConstants.LAB_TPLS[0]:
@@ -193,7 +193,7 @@ class JsonDataSorter:
             return sorted(self.data, key=lambda x: x['pcs'][2])
 
         elif self.pcs_type == CgatsConstants.XYZ_TPLS[0]:
-            return sorted(self.data, key=lambda x: CsXYZ2LCH(CsXYZ(x['pcs'][0], x['pcs'][1], x['pcs'][2])).H)
+            return sorted(self.data, key=lambda x: Cs_XYZ2LCH(CsXYZ(x['pcs'][0], x['pcs'][1], x['pcs'][2])).H)
 
     @staticmethod
     def sortorder(channel=4, step=5):

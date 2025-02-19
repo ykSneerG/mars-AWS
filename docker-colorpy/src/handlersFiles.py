@@ -3,7 +3,7 @@ import boto3  # type: ignore
 
 """ import base64 """
 from src.code.files.cgats import Cgats
-from src.code.space.colorConverter import CS_Spectral2XYZ, Cs_XYZ2LAB, Cs_Lab2XYZ, Cs_XYZ2RGB, CsXYZ2LCH
+from src.code.space.colorConverter import CS_Spectral2XYZ, Cs_XYZ2LAB, Cs_Lab2XYZ, Cs_XYZ2RGB, Cs_XYZ2LCH
 from src.code.space.colorSpace import CsLCH, CsSpectral, CsXYZ, CsLAB
 from src.code.space.colorConstants.illuminant import OBSERVER, Illuminant
 
@@ -167,7 +167,7 @@ class Files_CgatsToJson_Handler(BaseLambdaHandler):
             xyz: CsXYZ = CS_Spectral2XYZ(snm_entry, observer)
             lab: CsLAB = Cs_XYZ2LAB(xyz, Illuminant.D50_DEG2)
             hex: str = Cs_XYZ2RGB(xyz).to_hex()
-            lch: CsLCH = CsXYZ2LCH(xyz, Illuminant.D50_DEG2)
+            lch: CsLCH = Cs_XYZ2LCH(xyz, Illuminant.D50_DEG2)
 
             #res["XYZ"] = self.minifyCs(xyz, 3).to_json()
             #res["LAB"] = self.minifyCs(lab, 3).to_json()

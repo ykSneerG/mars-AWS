@@ -364,6 +364,38 @@ class SynLinSolidV4a(BaseLinearization):
         return response
 
 
+class OptcolorNumpy_OLD:
+
+    @staticmethod
+    def ksFromSnm(snm: np.ndarray) -> np.ndarray:
+        return (1 - snm) ** 2 / (2 * snm)
+
+    @staticmethod
+    def ksToSnm(ks: np.ndarray) -> np.ndarray:
+        return 1 + ks - np.sqrt(ks**2 + 2 * ks)
+
+    @staticmethod
+    def ksFulltoneInk(ksMedia: np.ndarray, ksSolid: np.ndarray) -> np.ndarray:
+        return ksSolid - ksMedia
+
+    @staticmethod
+    def ksMix(
+        ksMedia: np.ndarray, ksSolid: np.ndarray, cMedia: Union[float, np.ndarray], cSolid: Union[float, np.ndarray]
+    ) -> np.ndarray:
+        """
+        Optimized version of ksMix using vectorized operations.
+        """
+        # Wenn cMedia und cSolid float sind, in np.ndarray umwandeln
+        if isinstance(cMedia, float):
+            cMedia = np.array([cMedia])
+        if isinstance(cSolid, float):
+            cSolid = np.array([cSolid])
+
+        ksMix = (ksMedia[:, np.newaxis] * cMedia) + (ksSolid[:, np.newaxis] * cSolid)
+        spectrals = OptcolorNumpy.ksToSnm(ksMix)
+        return spectrals.T
+
+
 class OptcolorNumpy:
     @staticmethod
     def ksFromSnm(snm: np.ndarray) -> np.ndarray:
