@@ -5,7 +5,6 @@ from src.code.predict.linearization.synlinV4a import SynLinSolidV4a
 from src.code.space.colorConverter import Cs_Spectral2Multi
 
 import numpy as np  # type: ignore
-import itertools
 
 
 class Predict_LinearInterpolation_Handler(BaseLambdaHandler):
@@ -64,10 +63,39 @@ class GradientMixGenerator:
         return result
     
     @staticmethod
-    def generate_dcs_tolist(gradient, dimension):
-        return GradientMixGenerator.generate_dcs(gradient, dimension).tolist()
-    
-    
+    def generate_dcs_OLD(gradient, dimension):
+        """
+        Generate a list of mixtures for a given gradient and dimension, without using itertools.
+
+        :param gradient: A list or array of gradient points (values from 0 to 1).
+        :param dimension: The dimension of the space (1D, 2D, 3D, etc.).
+        :return: A 2D array of mixtures where each row represents a mixture.
+        """
+        # If gradient is a single value, repeat it to form a gradient
+        if isinstance(gradient, (int, float)):
+            gradient = [gradient]
+        
+        # Helper function to generate all Cartesian products recursively
+        def cartesian_product(gradients, depth, current):
+            # Base case: if we've reached the desired dimension, add the current combination
+            if depth == dimension:
+                result.append(current)
+                return
+            
+            # Recur for all gradient values at this depth level
+            for value in gradients:
+                cartesian_product(gradients, depth + 1, current + [value])
+        
+        # To store the result
+        result = []
+        
+        # Generate all Cartesian products starting from an empty combination
+        cartesian_product(gradient, 0, [])
+        
+        # Convert the result into a numpy array for consistency
+        return result
+
+
 class SlsHelper:
     
     @staticmethod
@@ -210,12 +238,13 @@ class Predict_SynlinV4_Handler(BaseLambdaHandler):
         jd.update({ "color": SlsHelper.process_colors_batch(SLS_PARAMS, rail) })
         
         dcs_gradient = np.linspace(0, 1, STEPS)
-        dcs = GradientMixGenerator.generate_dcs_tolist(dcs_gradient, 1)
-        for color, dcs_value in zip(jd["color"], dcs):
-            color["dcs"] = dcs_value
+        dcs = GradientMixGenerator.generate_dcs(dcs_gradient, 1).tolist()
+        for i in range(len(jd["color"])):
+            jd["color"][i].update({ "dcs": dcs[i] })
         
         jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)
+
 
 class Predict_SynAreaV4_Handler(BaseLambdaHandler):
 
@@ -251,12 +280,13 @@ class Predict_SynAreaV4_Handler(BaseLambdaHandler):
         jd.update({ "color": SlsHelper.process_colors_batch(SLS_PARAMS, rail) })
         
         dcs_gradient = np.linspace(0, 1, STEPS)
-        dcs = GradientMixGenerator.generate_dcs_tolist(dcs_gradient, 2)
-        for color, dcs_value in zip(jd["color"], dcs):
-            color["dcs"] = dcs_value
+        dcs = GradientMixGenerator.generate_dcs(dcs_gradient, 2).tolist()
+        for i in range(len(jd["color"])):
+            jd["color"][i].update({ "dcs": dcs[i] })
             
         jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)
+
 
 class Predict_SynVolumeV4_Handler(BaseLambdaHandler):
 
@@ -301,9 +331,9 @@ class Predict_SynVolumeV4_Handler(BaseLambdaHandler):
         jd.update({ "color": SlsHelper.process_colors_batch(SLS_PARAMS, rail) })
         
         dcs_gradient = np.linspace(0, 1, STEPS)
-        dcs = GradientMixGenerator.generate_dcs_tolist(dcs_gradient, 3)
-        for color, dcs_value in zip(jd["color"], dcs):
-            color["dcs"] = dcs_value
+        dcs = GradientMixGenerator.generate_dcs(dcs_gradient, 3).tolist()
+        for i in range(len(jd["color"])):
+            jd["color"][i].update({ "dcs": dcs[i] })
 
         jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)
@@ -349,21 +379,12 @@ class Predict_SynHyperFourV4_Handler(BaseLambdaHandler):
         
         ENTRY_LENGTH = len(interpolated_edges_T[0])
         EDGES_LENGTH = len(interpolated_edges_T)
-        tower = [[] for _ in range(EDGES_LENGTH)]
         
+        tower = [[] for _ in range(EDGES_LENGTH)]
         for i in range(ENTRY_LENGTH):
             for j in range(EDGES_LENGTH):
                 tower[j].extend(SlsHelper.mix_all(sls, interpolated_edges_D[j][i], interpolated_edges_T[j][i], STEPS))
-        """ 
-        for j in range(EDGES_LENGTH):
-            tower[j].extend(
-                itertools.chain.from_iterable(
-                    SlsHelper.mix_all(sls, interpolated_edges_D[j][i], interpolated_edges_T[j][i], STEPS)
-                    for i in range(ENTRY_LENGTH)
-                )
-            )
-        """
-            
+        
         # --- 2. PREDICT RAIL ---
 
         TG_LENGTH = len(tower[0])
@@ -377,9 +398,9 @@ class Predict_SynHyperFourV4_Handler(BaseLambdaHandler):
         jd.update({ "color": SlsHelper.process_colors_batch(SLS_PARAMS, rail) })
         
         dcs_gradient = np.linspace(0, 1, STEPS)
-        dcs = GradientMixGenerator.generate_dcs_tolist(dcs_gradient, 4)
-        for color, dcs_value in zip(jd["color"], dcs):
-            color["dcs"] = dcs_value
+        dcs = GradientMixGenerator.generate_dcs(dcs_gradient, 4).tolist()
+        for i in range(len(jd["color"])):
+            jd["color"][i].update({ "dcs": dcs[i] })
         
         jd.update({ "elapsed": self.get_elapsed_time() })
         return self.get_common_response(jd)

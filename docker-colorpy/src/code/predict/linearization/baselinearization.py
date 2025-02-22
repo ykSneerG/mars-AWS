@@ -1,3 +1,5 @@
+import numpy as np  # type: ignore
+
 class BaseLinearization:
     """
     Predict a linearization based an spectral data in a range of 380-730nm with 10nm steps.
@@ -52,9 +54,11 @@ class BaseLinearization:
         self.gradient = gradient
 
     def set_gradient_by_steps(self, subdivision: int) -> None | dict:
-        ramp = self.calculate_gradient_by_steps(subdivision)
+        #ramp = self.calculate_gradient_by_steps(subdivision)
+        ramp = np.linspace(0, 1, subdivision).tolist()
         self.set_gradient(ramp)
         
+    """ 
     def calculate_gradient_by_steps(self, subdivision: int) -> None | dict:
         if subdivision <= 1:
             return "Subdivision must be greater than 1."
@@ -62,7 +66,8 @@ class BaseLinearization:
         size = 1 / (subdivision - 1)
         ramp = [i * size for i in range(subdivision)]
 
-        return ramp
+        return ramp 
+    """
 
     def in_tolerance(self, actualValue, targetValue) -> bool:
         return abs(actualValue - targetValue) <= self.tolerance
