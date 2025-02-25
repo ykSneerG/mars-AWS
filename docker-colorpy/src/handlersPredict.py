@@ -2,7 +2,7 @@ from typing import Any
 from src.handlers import BaseLambdaHandler
 from src.code.predict.linearization.linearInterpolation import LinearInterpolation
 from src.code.predict.linearization.synlinV4a import SynLinSolidV4a
-from src.code.space.colorConverter import Cs_Spectral2Multi
+from src.code.space.colorConverter import Cs_Spectral2Multi, ColorTrafo
 
 import numpy as np  # type: ignore
 import itertools
@@ -115,7 +115,7 @@ class SlsHelper:
             snm = [factor * item for item in snm]
             """ 
             
-            result = Cs_Spectral2Multi([snm], {"LCH": True})
+            result = ColorTrafo.Cs_Spectral2Multi([snm], {"LCH": True})
             lchl_normalized = result[0]["lch"]["L"] / 100
             factor = (1 - lchl_normalized) ** (darken)
             snm = [factor * item for item in snm]
@@ -229,11 +229,12 @@ class Predict_SynAreaV4_Handler(BaseLambdaHandler):
 
         jd = {}
         
-        c1 = self.event["c1"]                   # (W)
-        c2 = self.event["c2"]                   # (C)
-        c3 = self.event["c3"]                   # (M)
-        c4 = SlsHelper.mix_1to1(sls, c2, c3)    # (C) + (M)
-
+        c1 = self.event.get("c1")                                           # (W)
+        c2 = self.event.get("c2")                                           # (C)
+        c3 = self.event.get("c3")                                           # (M)
+        c4 = self.event.get("c4", SlsHelper.mix_1to1(sls, c2, c3, darkf))   # (C) + (M)
+        #c4 = SlsHelper.mix_1to1(sls, c2, c3)    # (C) + (M)
+        
         # --- 1. PREDICT TOWER ---
         
         #edges = [[c1, c2], [c3, c4]]
@@ -270,14 +271,14 @@ class Predict_SynVolumeV4_Handler(BaseLambdaHandler):
 
         jd = {}
                 
-        c1 = self.event["c1"]                   # (W)
-        c2 = self.event["c2"]                   # (C)
-        c3 = self.event["c3"]                   # (M)
-        c4 = self.event["c4"]                   # (Y)
-        c5 = SlsHelper.mix_1to1(sls, c2, c3)    # (C) + (M)
-        c6 = SlsHelper.mix_1to1(sls, c2, c4)    # (C) + (Y)
-        c7 = SlsHelper.mix_1to1(sls, c3, c4)    # (M) + (Y)
-        c8 = SlsHelper.mix_2to1(sls, c5, c4)    # (C + M) + (Y)
+        c1 = self.event.get("c1")                                           # (W)
+        c2 = self.event.get("c2")                                           # (C)
+        c3 = self.event.get("c3")                                           # (M)
+        c4 = self.event.get("c4")                                           # (Y)
+        c5 = self.event.get("c5", SlsHelper.mix_1to1(sls, c2, c3, darkf))   # (C) + (M)
+        c6 = self.event.get("c6", SlsHelper.mix_1to1(sls, c2, c4, darkf))   # (C) + (Y)
+        c7 = self.event.get("c7", SlsHelper.mix_1to1(sls, c3, c4, darkf))   # (M) + (Y)
+        c8 = self.event.get("c8", SlsHelper.mix_2to1(sls, c5, c4, darkf))   # (C + M) + (Y)
 
         # --- 1. PREDICT TOWER ---
                 

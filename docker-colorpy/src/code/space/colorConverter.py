@@ -505,6 +505,81 @@ class ColorTrafo:
             **({"hex": hex[i]} if incl.get("HEX") else {})
         } for i, row in enumerate(spectral)]
         
+        
+        
+    def Cs_Spectral2Multi_Parallel(self, values: np.ndarray, incl_dst_values: dict = None) -> list:
+        # Use ThreadPoolExecutor for parallel processing
+        from concurrent.futures import ThreadPoolExecutor
+        import multiprocessing
+        
+        # Get number of CPU cores, but limit to reasonable number for Lambda
+        num_cores = min(multiprocessing.cpu_count(), 4)
+        
+        spectral = np.asarray(values, dtype=np.float32)
+        if spectral.ndim == 1:
+            spectral = spectral[np.newaxis, :]
+            
+        # Split data into chunks for parallel processing
+        spectral_chunks = np.array_split(spectral, num_cores)
+        
+        incl = incl_dst_values or {}
+        
+        def process_chunk(chunk):
+            # Process a single chunk of spectral data
+            xyz = lab = lch = hex = None
+            rounded_lch = None
+            
+            if any([incl.get(k, False) for k in ["XYZ", "LAB", "LCH", "HEX"]]):
+                xyz = self.CS_SNM2XYZ(chunk)
+                
+                if incl.get("HEX", False):
+                    hex = self.Cs_XYZ2RGB(xyz)
+                    hex = np.apply_along_axis(
+                        lambda x: f"#{int(x[0]):02X}{int(x[1]):02X}{int(x[2]):02X}", 
+                        1, 
+                        np.clip(hex, 0, 255).astype(np.uint8)
+                    )
+                    
+                if incl.get("LAB", False) or incl.get("LCH", False):
+                    lab = self.Cs_XYZ2LAB(xyz)
+                    
+                    if incl.get("LCH", False):
+                        lch = self.Cs_Lab2LCH(lab)
+                        rounded_lch = np.round(lch, 2)
+                        
+            # Build results for this chunk
+            chunk_results = []
+            for i, row in enumerate(chunk):
+                entry = {"snm": [round(float(num), 4) for num in row]}
+                
+                if incl.get("XYZ") and xyz is not None:
+                    entry["xyz"] = np.round(xyz[i], 2).tolist()
+                if incl.get("LAB") and lab is not None:
+                    entry["lab"] = np.round(lab[i], 2).tolist()
+                if incl.get("LCH") and rounded_lch is not None:
+                    entry["lch"] = {
+                        "L": float(rounded_lch[i][0]),
+                        "C": float(rounded_lch[i][1]),
+                        "H": float(rounded_lch[i][2])
+                    }
+                if incl.get("HEX") and hex is not None:
+                    entry["hex"] = hex[i]
+                    
+                chunk_results.append(entry)
+                
+            return chunk_results
+            
+        # Process chunks in parallel using ThreadPoolExecutor
+        results = []
+        with ThreadPoolExecutor(max_workers=num_cores) as executor:
+            chunk_results = executor.map(process_chunk, spectral_chunks)
+            for chunk_result in chunk_results:
+                results.extend(chunk_result)
+                
+        return results       
+        
+
+        
     def Cs_Spectral2Multi_OLD(self, values: np.ndarray, incl_dst_values: dict = None) -> list:
         """Vectorized spectral to multiple color space converter"""
         # Convert input to numpy array and pre-process
