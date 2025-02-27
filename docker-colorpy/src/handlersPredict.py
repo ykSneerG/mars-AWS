@@ -11,7 +11,7 @@ import boto3  # type: ignore
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import chain
-import orjson  # type: ignore
+import orjson # type: ignore
 
 
 class Predict_LinearInterpolation_Handler(BaseLambdaHandler):
@@ -51,7 +51,7 @@ FROM HERE ONWARDS, THE CODE USES THE SynLinSolidV4a CLASS to predict n-dimension
 class GradientMixGenerator:
 
     @staticmethod
-    def generate_dcs(gradient, dimension):
+    def generate_dcs(gradient, dimension, scale=1):
         """
         Generate a list of mixtures for a given gradient and dimension using NumPy.
 
@@ -59,8 +59,9 @@ class GradientMixGenerator:
         :param dimension: The dimension of the space (1D, 2D, 3D, etc.).
         :return: A 2D NumPy array of mixtures where each row represents a mixture.
         """
+        
         # Ensure gradient is a NumPy array
-        gradient = np.asarray(gradient)
+        gradient = np.asarray(gradient * scale)
 
         # Generate meshgrid for all dimensions
         grids = np.meshgrid(*[gradient] * dimension, indexing="ij")
@@ -71,8 +72,8 @@ class GradientMixGenerator:
         return result
 
     @staticmethod
-    def generate_dcs_tolist(gradient, dimension):
-        return GradientMixGenerator.generate_dcs(gradient, dimension).tolist()
+    def generate_dcs_tolist(gradient, dimension, scale=1):
+        return GradientMixGenerator.generate_dcs(gradient, dimension, scale).tolist()
 
 
 class SlsHelper:
@@ -149,6 +150,7 @@ class SlsHelper:
         sls.set_solid(color2)
         res: dict[str, Any] = sls.start_Curve3D()
         return [item["snm"] for item in res["color"]]
+
 
     @staticmethod
     def process_colors_batch(
@@ -467,6 +469,41 @@ class Predict_SynHyperFourV4_Parallel_Handler(BaseLambdaHandler):
             print(f"Error invoking Lambda: {e}")
             return {"error": str(e)}
 
+
+    def excute_lambda_rails(self, debug, space, preci, toler, STEPS, rail_chunked_list):
+        payloads = [
+            {
+                "id": i,
+                "rail": rail_chunked_list[i].tolist(),
+                "debug": debug,
+                "space": space,
+                "preci": preci,
+                "toler": toler,
+                "steps": STEPS,
+            }
+            for i in range(len(rail_chunked_list))
+        ]
+
+        # Using ThreadPoolExecutor to submit multiple requests in parallel
+        unflattened_results = [None] * len(payloads)
+        flattened_elapsed = []
+
+        lambda_client = boto3.client("lambda")
+        with ThreadPoolExecutor(max_workers=len(payloads)) as executor:
+            futures = {
+                executor.submit(self.invoke_aws, lambda_client, payload): payload["id"]
+                for payload in payloads
+            }
+
+            for future in as_completed(futures):
+                result = future.result()
+                unflattened_results[result["body"]["id"]] = result["body"]["color"]
+                flattened_elapsed.append(result["body"]["elapsed"])
+
+        flattened_results = list(chain.from_iterable(unflattened_results))
+        return flattened_elapsed,flattened_results
+
+
     def handle(self):
 
         (debug, space, preci, toler, STEPS, darkf) = SlsHelper.evalEvent(self.event)
@@ -523,9 +560,7 @@ class Predict_SynHyperFourV4_Parallel_Handler(BaseLambdaHandler):
         ]
 
         jd.update({"elapsed-2a-interpolated_edges": self.get_elapsed_time()})
-        jd.update(
-            {"elapsed-2a-interpolated_edges-length": len(interpolated_edges_T[0])}
-        )
+        jd.update({"elapsed-2a-interpolated_edges-length": len(interpolated_edges_T[0])})
 
         ENTRY_LENGTH = len(interpolated_edges_T[0])
         EDGES_LENGTH = len(interpolated_edges_T)
@@ -546,97 +581,49 @@ class Predict_SynHyperFourV4_Parallel_Handler(BaseLambdaHandler):
         jd.update({"elapsed-2b-tower-length": len(tower[0])})
 
         # --- 2. PREDICT RAIL ---
-
-        TG_LENGTH = len(tower[0])
-        rail = [
-            [
-                item
-                for i in range(TG_LENGTH)
-                for item in SlsHelper.mix_all(sls, tower[0][i], tower[1][i], STEPS)
-            ],
-            [
-                item
-                for i in range(TG_LENGTH)
-                for item in SlsHelper.mix_all(sls, tower[3][i], tower[2][i], STEPS)
-            ],
+        
+        towers_01 = [tower[0], tower[1]]
+        towers_23 = [tower[3], tower[2]]
+        
+        """         
+        jd.update({"elapsed-3-rail": towers_01})
+        jd.update({"elapsed-3-rail-length": len(towers_01[0])})
+        return self.get_common_response(jd) 
+        """
+                                        
+        tower_chunksize = len(towers_01[0]) if len(towers_01[0]) < 30 else 30
+        
+        towers_chunked_01 = self.chunk_rail_numpy(towers_01, tower_chunksize)
+        rail_elapsed_01, rail_01 = self.excute_lambda_rails(debug, space, preci, toler, STEPS, towers_chunked_01)
+        
+        towers_chunked_23 = self.chunk_rail_numpy(towers_23, tower_chunksize)
+        rail_elapsed_23, rail_23 = self.excute_lambda_rails(debug, space, preci, toler, STEPS, towers_chunked_23)
+        
+        jd.update({"elapsed-2-rail_elapsed_01": rail_elapsed_01})
+        jd.update({"elapsed-2-rail_elapsed_23": rail_elapsed_23})
+        
+        tower_rail = [
+            [item["snm"] for item in rail_01],
+            [item["snm"] for item in rail_23],
         ]
 
-        # jd.update({ "rail": rail })
         jd.update({"elapsed-3-rail": self.get_elapsed_time()})
-        jd.update({"elapsed-3-rail-length": len(rail[0])})
+        jd.update({"elapsed-3-rail-length": len(tower_rail[0])})
 
         # --- 3. PREDICT COLORS ---
 
-        # --> SPLIT in multiple Lambda Functions <--
-
-        rail_chunked_list = self.chunk_rail_numpy(rail, chunksize)
-
-        # --> SPLIT in multiple Lambda Functions <--
-
-        # Payloads with unique IDs
-        payloads = [
-            {
-                "id": i,
-                "rail": rail_chunked_list[i].tolist(),
-                "debug": debug,
-                "space": space,
-                "preci": preci,
-                "toler": toler,
-                "steps": STEPS,
-            }
-            for i in range(len(rail_chunked_list))
-        ]
-
-        # Using ThreadPoolExecutor to submit multiple requests in parallel
-        unflattened_results = [None] * len(payloads)
-        flattened_elapsed = []
-
-        lambda_client = boto3.client("lambda")
-        with ThreadPoolExecutor(max_workers=len(payloads)) as executor:
-            futures = {
-                executor.submit(self.invoke_aws, lambda_client, payload): payload["id"]
-                for payload in payloads
-            }
-
-            for future in as_completed(futures):
-                result = future.result()
-                unflattened_results[result["body"]["id"]] = result["body"]["color"]
-                flattened_elapsed.append(result["body"]["elapsed"])
-
-        flattened_results = list(chain.from_iterable(unflattened_results))
+        rail_chunked = self.chunk_rail_numpy(tower_rail, chunksize)
+        flattened_elapsed, flattened_results = self.excute_lambda_rails(debug, space, preci, toler, STEPS, rail_chunked)
 
         # Process results
         jd.update({"color": flattened_results})
         jd.update({"color_length": len(flattened_results)})
         jd.update({"elapsed-5-parallel": flattened_elapsed})
-        jd.update(
-            {
-                "elapsed-5-parallel-avg": (
-                    sum(flattened_elapsed) / len(flattened_elapsed)
-                    if flattened_elapsed
-                    else 0
-                )
-            }
-        )
-        jd.update(
-            {
-                "elapsed-5-parallel-max": (
-                    max(flattened_elapsed) if flattened_elapsed else 0
-                )
-            }
-        )
-        jd.update(
-            {
-                "elapsed-5-parallel-min": (
-                    min(flattened_elapsed) if flattened_elapsed else 0
-                )
-            }
-        )
         jd.update({"elapsed-5": self.get_elapsed_time()})
 
         # Add DCS values to each color
         dcs_gradient = np.linspace(0, 1, STEPS)
-        dcs = GradientMixGenerator.generate_dcs_tolist(dcs_gradient, 4)
+        dcs = GradientMixGenerator.generate_dcs_tolist(dcs_gradient, 4, scale=100)
         for color, dcs_value in zip(jd["color"], dcs):
             color["dcs"] = dcs_value
 
