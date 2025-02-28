@@ -421,6 +421,10 @@ class ColorTrafo:
         
         return np.stack([L, a, b], axis=-1)
     
+    def Cs_SNM2LAB(self, curveNM: np.ndarray) -> np.ndarray:
+        xyz = self.CS_SNM2XYZ(curveNM)
+        return self.Cs_XYZ2LAB(xyz)
+    
     def Cs_Lab2LCH(self, lab: np.ndarray) -> np.ndarray:
         """
         Vectorized LAB to LCH conversion for single or multiple colors

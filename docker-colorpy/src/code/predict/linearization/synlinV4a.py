@@ -46,21 +46,19 @@ class SynLinSolidV4a(BaseLinearization):
 
         cSolid = np.linspace(0, 1, self.precision)
         cMedia = 1 - cSolid
-
+        
         trafo: ColorTrafo = ColorTrafo()
+        func_SNM2Target = trafo.CS_SNM2XYZ if self.space == "XYZ" else trafo.Cs_SNM2LAB
 
         nps_snm = OptcolorNumpy.ksMix(ksMedia, ksSolid, cMedia, cSolid)
-        nps = trafo.CS_SNM2XYZ(nps_snm)
-        if self.space == "LAB":
-            nps = trafo.Cs_XYZ2LAB(nps)
+        nps = func_SNM2Target(nps_snm)
 
         ce = CurveEstimator3D()
         ce.calculate_curve_length(nps, 10000, 2000)
 
         LENC = len(self.gradient)
-        num_bands = len(self.media)  # Anzahl der Spektralbänder
-
-        estimat_SNM = np.zeros((LENC, num_bands))
+                
+        estimat_SNM = np.zeros((LENC, len(self.media)))
         current_POS = [0.0] * LENC
         est_cSolid = [0.0] * LENC
         loop = [0] * LENC
@@ -76,12 +74,9 @@ class SynLinSolidV4a(BaseLinearization):
             while loop[j] < 21:
 
                 mid = (low + high) * 0.5  # Midpoint for binary search
+                
                 estimat_SNM[j] = OptcolorNumpy.ksMix(ksMedia, ksSolid, 1 - mid, mid)
-
-                tmp = trafo.CS_SNM2XYZ(estimat_SNM[j])
-                if self.space == "LAB":
-                    tmp = trafo.Cs_XYZ2LAB(tmp)
-
+                tmp = func_SNM2Target(estimat_SNM[j])
                 current_POS[j] = ce.calculate_percentage(tmp)
 
                 dfactor = current_POS[j] - self.gradient[j]  # Error difference
@@ -93,7 +88,7 @@ class SynLinSolidV4a(BaseLinearization):
                     high = mid  # Shift upper bound down
                 else:
                     low = mid  # Shift lower bound up
-
+                    
                 loop[j] += 1
 
             est_cSolid[j] = mid  # Assign final optimized value

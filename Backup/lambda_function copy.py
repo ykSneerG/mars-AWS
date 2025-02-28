@@ -92,6 +92,8 @@ def lh_predict_volume_v4(event, context):
     return handler.handle()
 
 def lh_predict_4dimensional_v4(event, context):
+    #from src.handlersPredict import Predict_SynHyperFourV4_Handler
+    #handler = Predict_SynHyperFourV4_Handler(event, context)
     from src.handlersPredict import Predict_SynHyperFourV4_Parallel_Handler
     handler = Predict_SynHyperFourV4_Parallel_Handler(event, context)
     return handler.handle()
