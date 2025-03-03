@@ -1,6 +1,6 @@
 from typing import Union
 import numpy as np  # type: ignore
-from src.code.space.colorConverter import ( ColorTrafo )
+from src.code.space.colorConverterNumpy import ColorTrafoNumpy
 from src.code.predict.linearization.baselinearization import BaseLinearization
 from src.code.curveReducer import CurveEstimator3D
 
@@ -47,7 +47,7 @@ class SynLinSolidV4a(BaseLinearization):
         cSolid = np.linspace(0, 1, self.precision)
         cMedia = 1 - cSolid
         
-        trafo: ColorTrafo = ColorTrafo()
+        trafo: ColorTrafoNumpy = ColorTrafoNumpy()
         func_SNM2Target = trafo.CS_SNM2XYZ if self.space == "XYZ" else trafo.Cs_SNM2LAB
 
         nps_snm = OptcolorNumpy.ksMix(ksMedia, ksSolid, cMedia, cSolid)
@@ -93,8 +93,7 @@ class SynLinSolidV4a(BaseLinearization):
 
             est_cSolid[j] = mid  # Assign final optimized value
 
-        color = trafo.Cs_Spectral2Multi(estimat_SNM, self.destination_types)
-        #color = trafo.Cs_Spectral2Multi_Parallel(estimat_SNM, self.destination_types)
+        color = trafo.Cs_SNM2MULTI(estimat_SNM, self.destination_types)
         
         response = {
             "color": color
@@ -120,130 +119,6 @@ class SynLinSolidV4a(BaseLinearization):
             ) 
 
         return response
-
-
-    def start_Curve3D_Parallel(self):
-        import concurrent.futures
-        from functools import partial
-
-        # - + - + - + - + CHECK THE LIGHT and DARK TENDENCIES - + - + - + - + -
-
-        ksMedia = OptcolorNumpy.ksFromSnm(np.array(self.media))
-        ksSolid = OptcolorNumpy.ksFromSnm(np.array(self.solid))
-
-        # - + - + - + - + ESTIMATE THE CURVE IN 3D SPACE - + - + - + - + -
-
-        cSolid = np.linspace(0, 1, self.precision)
-        cMedia = 1 - cSolid
-
-        trafo: ColorTrafo = ColorTrafo()
-
-        nps_snm = OptcolorNumpy.ksMix(ksMedia, ksSolid, cMedia, cSolid)
-        nps = trafo.CS_SNM2XYZ(nps_snm)
-        if self.space == "LAB":
-            nps = trafo.Cs_XYZ2LAB(nps)
-
-        ce = CurveEstimator3D()
-        ce.calculate_curve_length(nps, 10000, 2000)
-
-        LENC = len(self.gradient)
-        num_bands = len(self.media)
-
-        # Initialize arrays
-        estimat_SNM = np.zeros((LENC, num_bands))
-        current_POS = np.zeros(LENC)
-        est_cSolid = np.zeros(LENC)
-        loop = np.zeros(LENC, dtype=int)
-
-        gradient_array = np.array(self.gradient)
-        low_mask = gradient_array == 0.0
-        high_mask = gradient_array == 1.0
-        
-        # Handle edge cases
-        est_cSolid[low_mask] = 0.0
-        est_cSolid[high_mask] = 1.0
-        estimat_SNM[low_mask] = self.media
-        estimat_SNM[high_mask] = self.solid
-
-        process_mask = ~(low_mask | high_mask)
-        points_to_process = np.where(process_mask)[0]
-
-        def process_point(j, ksMedia, ksSolid, gradient_array, trafo, ce):
-            low, high = 0.0, 1.0
-            current_pos = 0.0
-            loop_count = 0
-            estimat = np.zeros(num_bands)
-            
-            for _ in range(21):
-                mid = (low + high) * 0.5
-                estimat = OptcolorNumpy.ksMix(ksMedia, ksSolid, 1 - mid, mid)
-                tmp = trafo.CS_SNM2XYZ(estimat)
-                if self.space == "LAB":
-                    tmp = trafo.Cs_XYZ2LAB(tmp)
-                
-                # Convert numpy array to list of floats
-                tmp_list = tmp.ravel().tolist()
-                current_pos = ce.calculate_percentage(tmp_list)
-                dfactor = current_pos - gradient_array[j]
-                
-                if abs(dfactor) < self.tolerance:
-                    break
-                    
-                if dfactor > 0:
-                    high = mid
-                else:
-                    low = mid
-                    
-                loop_count += 1
-                
-            return j, mid, estimat, current_pos, loop_count
-
-        # Use ThreadPoolExecutor for parallel processing
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-            process_func = partial(process_point, 
-                                 ksMedia=ksMedia,
-                                 ksSolid=ksSolid, 
-                                 gradient_array=gradient_array,
-                                 trafo=trafo,
-                                 ce=ce)
-            
-            futures = [executor.submit(process_func, j) for j in points_to_process]
-            
-            for future in concurrent.futures.as_completed(futures):
-                j, mid, estimat, pos, loop_count = future.result()
-                estimat_SNM[j] = estimat
-                current_POS[j] = pos
-                est_cSolid[j] = mid
-                loop[j] = loop_count
-
-        # Use parallel version of spectral conversion
-        color = trafo.Cs_Spectral2Multi(estimat_SNM, self.destination_types)
-        
-        response = {
-            "color": color
-        }
-
-        if self.debug:
-            response.update({
-                "ksMedia": ksMedia.tolist(),
-                "ksSolid": ksSolid.tolist(), 
-                "loops": loop.tolist(),
-                "loopsSum": np.sum(loop),
-                "current_POS": np.round(current_POS, 6).tolist(),
-                "curve_length": ce.curve_length,
-                "nps": [nps[i].tolist() for i in range(len(nps))],
-                "space": self.space,
-                "ramp": np.round(gradient_array, 2).tolist(),
-                "cSolid": np.round(est_cSolid, 4).tolist(),
-                "tolerance": self.tolerance,
-                "precision": self.precision,
-                "version": "MARS.4a.082",
-            })
-
-        return response
-
-
-
 
 
 

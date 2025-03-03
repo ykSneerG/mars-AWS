@@ -81,6 +81,11 @@ def lh_predict_line_v4(event, context):
     handler = Predict_SynlinV4_Handler(event, context)
     return handler.handle()
 
+def lh_predict_line_multi_v4(event, context):
+    from src.handlersPredict import Predict_SynlinV4Multi_Handler
+    handler = Predict_SynlinV4Multi_Handler(event, context)
+    return handler.handle()
+
 def lh_predict_aera_v4(event, context):
     from src.handlersPredict import Predict_SynAreaV4_Handler
     handler = Predict_SynAreaV4_Handler(event, context)
