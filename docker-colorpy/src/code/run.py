@@ -2,7 +2,7 @@ import json
 from files.cgatsCreator import CgatsCreator
 from files.cgats import Cgats
 import os
-from files.jsondata import JsonDataSorter
+from files.jsonSorter import JsonDataSorter
 
 
 def clear_console():

@@ -29,6 +29,15 @@ class Botox:
             }
 
 
+    def load_S3(self, object_key):
+        try:
+            obj = self.client.get_object(Bucket=self.bucket_name, Key=object_key)
+            return obj['Body'].read().decode('utf-8')
+        except Exception as e:
+            return {
+                "error": str(e)
+            }
+
     # @staticmethod
     # def invoke_aws(client, payload):
     #     """Invokes an AWS Lambda function and handles possible errors."""

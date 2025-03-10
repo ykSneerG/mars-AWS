@@ -79,3 +79,16 @@ class BucketMan:
         object_data = response['Body'].read()
 
         return object_data
+    
+    @staticmethod
+    def get_txt_from_s3(bucket_name, object_key) -> str:
+
+        s3 = boto3.client('s3')
+
+        # Get the object from S3
+        response = s3.get_object(Bucket=bucket_name, Key=object_key)
+        # Read the object's content
+        object_data = response['Body'].read().decode('utf-8')
+
+        return object_data
+    

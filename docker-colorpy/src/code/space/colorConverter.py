@@ -252,14 +252,13 @@ def Cs_Spectral2Multi(values: list, incl_dst_values=None) -> list:
         tmp_SNM = item
 
         if incl_XYZ or incl_LAB or incl_LCH or incl_HEX:
-            tmp_SNM = [round(element, 4) for element in item]
             tmp_XYZ = CS_Spectral2XYZ(tmp_SNM, OBSERVER.DEG2)
             tmp_HEX = Cs_XYZ2RGB(tmp_XYZ).to_hex()
             tmp_LAB = Cs_XYZ2LAB(tmp_XYZ)
             tmp_LCH = Cs_Lab2LCH(tmp_LAB)
 
         entry = {
-            "snm": tmp_SNM,
+            "snm": tmp_SNM, #[round(element, 4) for element in item]
         }
         if incl_LCH:
             entry["lch"] = tmp_LCH.to_json(2)

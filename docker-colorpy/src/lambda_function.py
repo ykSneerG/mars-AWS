@@ -120,3 +120,41 @@ def lh_sample_color_spectral(event, context):
     from src.handlersSpace import Space_SampleSpectral_Handler
     handler = Space_SampleSpectral_Handler(event, context)
     return handler.handle()
+
+
+# - - - INTERPOLATE TARGET - - -
+
+def lh_interpolate_target_rbf(event, context):
+    from src.handlersPredict import InterpolateTarget_RBF_Handler
+    handler = InterpolateTarget_RBF_Handler(event, context)
+    return handler.handle()
+
+def lh_interpolate_target_optrbf(event, context):
+    from src.handlersPredict import InterpolateTarget_OptRBF_Handler
+    handler = InterpolateTarget_OptRBF_Handler(event, context)
+    return handler.handle()
+
+def lh_interpolate_target_modernrbf(event, context):
+    from src.handlersPredict import InterpolateTarget_modernRBF_Handler
+    handler = InterpolateTarget_modernRBF_Handler(event, context)
+    return handler.handle()
+
+
+# - - - INTERPOLATE TARGET - - -
+
+def lh_file_upload_cgats(event, context):
+    from src.handlersFiles import File_UploadCgats_Handler
+    handler = File_UploadCgats_Handler(event, context)
+    return handler.handle()
+
+def lh_file_uploadedcgats_to_json(event, context):
+    from src.handlersFiles import File_UploadedToJson_Handler
+    handler = File_UploadedToJson_Handler(event, context)
+    return handler.handle()
+
+
+
+def lh_file_uploaded_interpolate_target(event, context):
+    from src.handlersPredict import InterpolateTarget_Handler
+    handler = InterpolateTarget_Handler(event, context)
+    return handler.handle()

@@ -2,30 +2,23 @@ from typing import Any
 from src.handlers import BaseLambdaHandler
 from src.code.predict.linearization.linearInterpolation import LinearInterpolation
 from src.code.predict.linearization.synlinV4a import SynLinSolidV4a
-#from src.code.space.colorConverter import Cs_Spectral2Multi, ColorTrafo
 
 from src.code.space.colorConverterNumpy import ColorTrafoNumpy
-
-#from src.lambda_prewarm import LambdaPrewarmer
-
-import numpy as np  # type: ignore
-#import itertools
-#import math
-
-import boto3  # type: ignore
-#import json
-
-#import time
-
-from botocore.config import Config # type: ignore
+from src.code.space.colorConverter import Cs_Spectral2Multi
 
 from src.code.files.botox import Botox
+from src.code.files.jsonToCgats import JsonToCgats
+from src.code.files.cgatsToJson import CgatsToJson
+from src.code.marsHelper import RandomId
 
+import numpy as np  # type: ignore
+import boto3  # type: ignore
+from botocore.config import Config # type: ignore
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import chain
 import orjson # type: ignore
 
-from src.code.files.jsonToCgats import JsonToCgats
+
 
 class Predict_LinearInterpolation_Handler(BaseLambdaHandler):
     def handle(self):
@@ -60,32 +53,11 @@ class Predict_LinearInterpolation_Handler(BaseLambdaHandler):
 FROM HERE ONWARDS, THE CODE USES THE SynLinSolidV4a CLASS to predict n-dimensional colors.
 """
 
-import string
-import random
-    
     
 PRECISION = 100
 TOLERANCE = 0.00025
 
-class Helper:
-    
-    @staticmethod
-    def random_id_string(length):
-        '''
-        Generate a random string of fixed length
-        '''
-
-        return ''.join(random.choices(string.digits + string.ascii_uppercase, k=length))
-    
-    @staticmethod
-    def random_id(blocks=4, block_length=5, separator='-'):
-        '''
-        Generate random String with the following pattern xxxxx-xxxxx-xxxxx-xxxxx, containing only numbers and uppercase letters
-        '''
-        
-        return separator.join(Helper.random_id_string(block_length) for _ in range(blocks))
-    
-    
+ 
 class GradientMixGenerator:
 
     @staticmethod
@@ -171,6 +143,8 @@ class GradientMixGenerator:
         # Convert numpy arrays to regular lists
         return result
         """
+        
+        
 class SlsHelper:
 
     """ @staticmethod
@@ -692,7 +666,7 @@ class Predict_SynHyperFourV4_Parallel_Handler(BaseLambdaHandler):
 
 
         # Object name
-        object_name = Helper.random_id()
+        object_name = RandomId.random_id()
         
         # Store in bucket -- JSON
         datastore_json = Botox("mars-predicted-data")
@@ -750,4 +724,198 @@ class InterpolatePairs(BaseLambdaHandler):
         return self.get_common_response(jd)
 
 
+# -- INTERPOL -- INTERPOL -- INTERPOL -- INTERPOL -- INTERPOL -- INTERPOL -- INTERPOL -- 
+
+from src.code.predict.interpolateTarget import ModernRBFInterpolator
+
+class InterpolateTarget_modernRBF_Handler(BaseLambdaHandler):
+    
+    def handle(self):
+        jd = {}
+        
+        src_dcs = self.event["src_dcs"]
+        src_pcs = self.event["src_pcs"]
+        dst_dcs = self.event["dst_dcs"]
+        smooth = self.event.get("smoothing", 1e-8) # scientific notation for the number 0.00000001 (1 × 10⁻⁸).
+        
+        maxSmooth = 1.0
+        smooth = float(smooth / 100.0 * maxSmooth)
+        
+        if smooth < 1e-8:
+            smooth = 1e-8
+            
+        if smooth > maxSmooth:  
+            smooth = maxSmooth
+
+        # Initialize and compute RBF interpolation
+        rbf_model = ModernRBFInterpolator()
+        rbf_model.set_src_dcs(np.array(src_dcs))
+        rbf_model.set_src_spectra(np.array(src_pcs))
+        rbf_model.set_smoothness(smooth)
+        rbf_model.precompute_interpolator()
+
+        # ✅ **Cloud-friendly list-based usage**
+        """ [[0.2, 0.3, 0.5, 0.1, 0.6, 0.4], [0.6, 0.1, 0.2, 0.4, 0.3, 0.7]] """
+        dst_pcs = rbf_model.interpolate_spectral_data(dst_dcs)
+
+        jd.update({
+            "elapsed": self.get_elapsed_time(),
+            "dst_dcs": dst_dcs,
+            "dst_pcs": dst_pcs.tolist()
+        })
+        return self.get_common_response(jd)
+
+
+
+class InterpolateTarget_Handler(BaseLambdaHandler):
+    
+    """ 
+    const body = {
+        "uploadId": uploadId,
+        "dst_dcs": dstDcs,
+        "interpolation": 1,
+        "smoothing": smoothing,
+    };
+    """
+    
+    def scaleToRange(value, min_value, max_value):
+        scaledValue = (value - min_value) / (max_value - min_value)
+        clampedValue = max(min_value, min(max_value, scaledValue))
+        return clampedValue
+    
+        # smooth = float(smooth / 100.0 * maxSmooth)
+    
+    def handle(self):
+        
+        upload_id = self.event.get("uploadId", "")
+        if upload_id == "":
+            return self.get_error_response("No upload ID provided")
+        
+        try:
+            txt_value = Botox("mars-predicted-data").load_S3(f"data/{upload_id}.txt")
+        except Exception as e:
+            return self.get_error_response(str(e))   
+        
+        ctj = CgatsToJson({
+            "txt": txt_value,
+            "doublets_average": True,
+            "doublets_remove": True
+        })
+                
+        src_dcs = [x["dcs"] for x in ctj.result]
+        src_pcs = [x["pcs"] for x in ctj.result]        
+        dst_dcs = self.event["dst_dcs"]
+
+        # Initialize and compute RBF interpolation
+        smooth = self.event.get("smoothing", 1e-8)
+        smooth = InterpolateTarget_Handler.scaleToRange(smooth, 1e-8, 1.0)
+
+        rbf_model = ModernRBFInterpolator()
+        rbf_model.set_src_dcs(np.array(src_dcs))
+        rbf_model.set_src_spectra(np.array(src_pcs))
+        rbf_model.set_smoothness(smooth)
+        rbf_model.precompute_interpolator()
+
+        # ✅ **Cloud-friendly list-based usage**
+        """ [[0.2, 0.3, 0.5, 0.1, 0.6, 0.4], [0.6, 0.1, 0.2, 0.4, 0.3, 0.7]] """
+        dst_pcs = rbf_model.interpolate_spectral_data(dst_dcs).tolist()
+        
+        
+        result = ctj.result
+        
+        dst_space = self.event.get("dst_space", None)
+        if dst_space is not None:
+            colors = Cs_Spectral2Multi(dst_pcs, dst_space)
+            for i in range(len(dst_dcs)):
+                colors[i]["dcs"] = dst_dcs[i]
+            result = colors
+
+        jd = {
+            "elapsed": self.get_elapsed_time(),
+            "result": result
+        }
+        return self.get_common_response(jd)
+
+ 
+
+
+
+
+
+
 # -- DELETE -- DELETE -- DELETE -- DELETE -- DELETE -- DELETE -- DELETE -- DELETE --
+
+from src.code.predict.interpolateTarget import RadialBasisFunction
+
+class InterpolateTarget_RBF_Handler(BaseLambdaHandler):
+    
+    def handle(self):
+        jd = {}
+        
+        src_dcs = self.event["src_dcs"]
+        src_pcs = self.event["src_pcs"]
+        dst_dcs = self.event["dst_dcs"]
+
+        # Initialize and compute RBF interpolation
+        rbf_model = RadialBasisFunction()
+        rbf_model.set_src_dcs(np.array(src_dcs))
+        rbf_model.set_src_spectra(np.array(src_pcs))
+        rbf_model.precompute_interpolators()
+
+        # ✅ **Local NumPy-based usage**
+        """ 
+        new_colors_np = np.array([[0.2, 0.3, 0.5, 0.1, 0.6, 0.4]])
+        print("Interpolated (NumPy):", rbf_model.interpolate_numpy(new_colors_np))
+        """
+        
+        # ✅ **Cloud-friendly list-based usage**
+        
+        """ new_colors_list = [[0.2, 0.3, 0.5, 0.1, 0.6, 0.4], [0.6, 0.1, 0.2, 0.4, 0.3, 0.7]] """
+        dst_pcs = rbf_model.interpolate_list(dst_dcs)
+
+        jd.update({
+            "elapsed": self.get_elapsed_time(),
+            "dst_dcs": dst_dcs,
+            "dst_pcs": dst_pcs
+        })
+        return self.get_common_response(jd)
+
+
+
+from  src.code.predict.interpolateTarget import OptimizedRBFInterpolator, OptimizedRBFInterpolator2, OptimizedRBFInterpolator3
+
+class InterpolateTarget_OptRBF_Handler(BaseLambdaHandler):
+    
+    
+    def handle(self):
+        jd = {}
+        
+        src_dcs = self.event["src_dcs"]
+        src_pcs = self.event["src_pcs"]
+        dst_dcs = self.event["dst_dcs"]
+
+        # Initialize and compute RBF interpolation
+        rbf_model = OptimizedRBFInterpolator3()
+        rbf_model.set_src_dcs(src_dcs)
+        rbf_model.set_src_spectra(src_pcs)
+        rbf_model.precompute_interpolator()
+        """ rbf_model.precompute_interpolator(
+            kernel="multiquadric",
+            regularization=1e-4,
+            svd_cond_threshold=1e-10
+        ) """
+
+        # ✅ **Cloud-friendly list-based usage**        
+        """ new_colors_list = [[0.2, 0.3, 0.5, 0.1, 0.6, 0.4], [0.6, 0.1, 0.2, 0.4, 0.3, 0.7]] """
+        #dst_dcs_normalized = (dst_dcs - rbf_model.dcs_min) / (rbf_model.dcs_max - rbf_model.dcs_min + 1e-8)
+
+        dst_pcs = rbf_model.interpolate_spectral_data_rbf(dst_dcs)
+
+        jd.update({
+            "elapsed": self.get_elapsed_time(),
+            "dst_dcs": dst_dcs,
+            "dst_pcs": dst_pcs.tolist()
+        })
+        return self.get_common_response(jd)
+
+

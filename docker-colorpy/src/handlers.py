@@ -1,10 +1,5 @@
 from datetime import datetime
-#from src.code.botoX import BucketMan as bm
 import time, json
-
-
-# Specify the S3 bucket for all uploads
-BUCKET_NAME = 'clrtsplt-uploads'
 
 
 class BaseLambdaHandler:
