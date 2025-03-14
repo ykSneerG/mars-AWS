@@ -1,3 +1,4 @@
+import hashlib
 from typing import Any
 from src.handlers import BaseLambdaHandler
 from src.code.predict.linearization.linearInterpolation import LinearInterpolation
@@ -17,6 +18,8 @@ from botocore.config import Config # type: ignore
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import chain
 import orjson # type: ignore
+
+from src.code.predict.interpolateTarget import FilterMahalanobis, ModernRBFkernel, SavitzkyGolaySmoothing, ModernCubicHermeticSplineInterpolator
 
 
 
@@ -669,18 +672,24 @@ class Predict_SynHyperFourV4_Parallel_Handler(BaseLambdaHandler):
         object_name = RandomId.random_id()
         
         # Store in bucket -- JSON
-        datastore_json = Botox("mars-predicted-data")
-        datastore_json_result = datastore_json.store_S3(
+        btx_json = Botox("mars-predicted-data")
+        btx_json_content = orjson.dumps(rail_flattened)
+        btx_json_content_hash = hashlib.sha256(btx_json_content).hexdigest()
+        btx_json.metadata.update({"filecontenthash": btx_json_content_hash})
+        btx_json_result = btx_json.store_S3(
             object_name, 
-            orjson.dumps(rail_flattened),
+            btx_json_content,
             f"data/{object_name}.json"
         )
         
         # Store in bucket -- CGATS        
-        datastore_cgats = Botox("mars-predicted-data")
-        datastore_cgats_result = datastore_cgats.store_S3(
+        btx_cgats = Botox("mars-predicted-data")
+        btx_cgats_content = JsonToCgats(rail_flattened).convert()
+        btx_cgats_content_hash = hashlib.sha256(btx_cgats_content).hexdigest()
+        btx_cgats.metadata.update({"filecontenthash": btx_cgats_content_hash})
+        datastore_cgats_result = btx_cgats.store_S3(
             object_name, 
-            JsonToCgats(rail_flattened).convert(),
+            btx_cgats_content,
             f"data/{object_name}.txt"
         )
         
@@ -737,6 +746,28 @@ class InterpolateTarget_modernRBF_Handler(BaseLambdaHandler):
         src_pcs = self.event["src_pcs"]
         dst_dcs = self.event["dst_dcs"]
         smooth = self.event.get("smoothing", 1e-8) # scientific notation for the number 0.00000001 (1 × 10⁻⁸).
+        interpol = self.event.get("interpolation", 1)
+        
+        
+        # --- FILTER MAHALANOBIS ---
+        maha = FilterMahalanobis(src_dcs, src_pcs)
+        maha.apply_filter()
+        src_dcs = maha.filtered_dcs_list
+        src_pcs = maha.filtered_pcs_list
+        
+        """ 
+        # --- SAVITZKY-GOLAY SMOOTHING ---
+        sg = SavitzkyGolaySmoothing(np.array(src_pcs))
+        sg.apply_smoothing()
+        src_pcs = sg.smoothed_pcs_list  """     
+        
+        
+        # --- RBF INTERPOLATION ---
+        kernel = ModernRBFkernel.MULTIQUADRATIC
+        if interpol == 1:
+            kernel = ModernRBFkernel.MULTIQUADRATIC
+        if interpol == 2:
+            kernel = ModernRBFkernel.THINPLATESPLINE
         
         maxSmooth = 1.0
         smooth = float(smooth / 100.0 * maxSmooth)
@@ -752,6 +783,7 @@ class InterpolateTarget_modernRBF_Handler(BaseLambdaHandler):
         rbf_model.set_src_dcs(np.array(src_dcs))
         rbf_model.set_src_spectra(np.array(src_pcs))
         rbf_model.set_smoothness(smooth)
+        rbf_model.set_kernel(kernel)
         rbf_model.precompute_interpolator()
 
         # ✅ **Cloud-friendly list-based usage**
@@ -764,6 +796,75 @@ class InterpolateTarget_modernRBF_Handler(BaseLambdaHandler):
             "dst_pcs": dst_pcs.tolist()
         })
         return self.get_common_response(jd)
+
+
+# NOT WORKING --- NICE IDEA BUT NOT WORKING
+class InterpolateTarget_cubicHermiteSpline_Handler(BaseLambdaHandler):
+    
+    def handle(self):
+        
+        upload_id = self.event.get("uploadId", "")
+        if upload_id == "":
+            return self.get_error_response("No upload ID provided")
+        
+        try:
+            txt_value = Botox("mars-predicted-data").load_S3(f"data/{upload_id}.txt")
+        except Exception as e:
+            return self.get_error_response(str(e))   
+        
+        ctj = CgatsToJson({
+            "txt": txt_value,
+            "doublets_average": True,
+            "doublets_remove": True
+        })
+                
+        src_dcs = [x["dcs"] for x in ctj.result]
+        src_pcs = [x["pcs"] for x in ctj.result]        
+        dst_dcs = self.event["dst_dcs"]
+        
+        """ 
+        # --- FILTER MAHALANOBIS ---
+        maha = FilterMahalanobis(src_dcs, src_pcs, 2.5)
+        maha.apply_filter()
+        src_dcs = maha.filtered_dcs_list
+        src_pcs = maha.filtered_pcs_list
+        """
+        
+        """ 
+        # --- SAVITZKY-GOLAY SMOOTHING ---
+        sg = SavitzkyGolaySmoothing(np.array(src_pcs), window_length=5, polyorder=4)
+        sg.apply_smoothing()
+        src_pcs = sg.smoothed_pcs_list   
+        """ 
+        
+        # --- INTERPOLATION ---
+        # Initialize and compute interpolation
+        model = ModernCubicHermeticSplineInterpolator()
+        model.set_src_dcs(np.array(src_dcs))
+        model.set_src_spectra(np.array(src_pcs))
+        model.precompute_interpolator()
+
+        # ✅ **Cloud-friendly list-based usage**
+        """ [[0.2, 0.3, 0.5, 0.1, 0.6, 0.4], [0.6, 0.1, 0.2, 0.4, 0.3, 0.7]] """
+        dst_pcs = model.interpolate_spectral_data(dst_dcs)
+        
+        
+        result = ctj.result
+        
+        dst_space = self.event.get("dst_space", None)
+        if dst_space is not None:
+            colors = Cs_Spectral2Multi(dst_pcs, dst_space)
+            for i in range(len(dst_dcs)):
+                colors[i]["dcs"] = dst_dcs[i]
+            result = colors
+
+        jd = {
+            "elapsed": self.get_elapsed_time(),
+            "result": result
+        }
+        return self.get_common_response(jd)
+    
+
 
 
 
@@ -803,22 +904,58 @@ class InterpolateTarget_Handler(BaseLambdaHandler):
         })
                 
         src_dcs = [x["dcs"] for x in ctj.result]
-        src_pcs = [x["pcs"] for x in ctj.result]        
-        dst_dcs = self.event["dst_dcs"]
+        src_pcs = [x["pcs"] for x in ctj.result]    
+        
+        if self.event.get("steps"):
+            dst_dcs = GradientMixGenerator.generate_dcs_tolist(np.linspace(0, 100, self.event["steps"]), 4)
+        else:
+            dst_dcs = self.event["dst_dcs"]
+        
+        
+        # --- FILTER MAHALANOBIS ---
+        maha = FilterMahalanobis(src_dcs, src_pcs, 2.5)
+        maha.apply_filter()
+        src_dcs = maha.filtered_dcs_list
+        src_pcs = maha.filtered_pcs_list
+        
+        
+        """ 
+        # --- SAVITZKY-GOLAY SMOOTHING ---
+        sg = SavitzkyGolaySmoothing(np.array(src_pcs), window_length=5, polyorder=4)
+        sg.apply_smoothing()
+        src_pcs = sg.smoothed_pcs_list   
+        """ 
+        
 
         # Initialize and compute RBF interpolation
         smooth = self.event.get("smoothing", 1e-8)
-        smooth = InterpolateTarget_Handler.scaleToRange(smooth, 1e-8, 1.0)
+        """ smooth = InterpolateTarget_Handler.scaleToRange(smooth, 1e-8, 100.0) """
+        if smooth < 1e-8:
+            smooth = 1e-8
+        
+        # --- RBF INTERPOLATION ---
+        interpol = self.event.get("interpolation", 1)
+        kernel = ModernRBFkernel.MULTIQUADRATIC
+        if interpol == 1:
+            kernel = ModernRBFkernel.MULTIQUADRATIC
+        if interpol == 2:
+            kernel = ModernRBFkernel.THINPLATESPLINE
 
         rbf_model = ModernRBFInterpolator()
         rbf_model.set_src_dcs(np.array(src_dcs))
         rbf_model.set_src_spectra(np.array(src_pcs))
         rbf_model.set_smoothness(smooth)
+        rbf_model.set_kernel(kernel)
         rbf_model.precompute_interpolator()
 
         # ✅ **Cloud-friendly list-based usage**
         """ [[0.2, 0.3, 0.5, 0.1, 0.6, 0.4], [0.6, 0.1, 0.2, 0.4, 0.3, 0.7]] """
-        dst_pcs = rbf_model.interpolate_spectral_data(dst_dcs).tolist()
+        dst_pcs = rbf_model.interpolate_spectral_data(dst_dcs)
+        
+        # check if all elements of the dst_pcs is not below 0
+        # THIS IS A WORKAROUND FOR THE RBF INTERPOLATION, IF THE RESULT HAS NEGATIVE VALUES
+        # AS IT HAPPENS ONLY IN DARK COLORS, MAYBE IGNORABLE.
+        dst_pcs = np.abs(dst_pcs).tolist()
         
         
         result = ctj.result
@@ -835,11 +972,6 @@ class InterpolateTarget_Handler(BaseLambdaHandler):
             "result": result
         }
         return self.get_common_response(jd)
-
- 
-
-
-
 
 
 
@@ -882,7 +1014,7 @@ class InterpolateTarget_RBF_Handler(BaseLambdaHandler):
 
 
 
-from  src.code.predict.interpolateTarget import OptimizedRBFInterpolator, OptimizedRBFInterpolator2, OptimizedRBFInterpolator3
+from  src.code.predict.interpolateTarget import OptimizedRBFInterpolator3
 
 class InterpolateTarget_OptRBF_Handler(BaseLambdaHandler):
     

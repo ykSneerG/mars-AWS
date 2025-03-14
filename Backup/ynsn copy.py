@@ -131,9 +131,9 @@ class CellularYnsn_4C:
     def __init__(self, max_percentage, n, subdivision=4):
         self.MaxPercentage = max_percentage
         self.n = n
-        self.subdivision: int = subdivision
+        self.subdivision = subdivision
         self.nps = [0] * 16
-        self.dcs: list[float] = [0.0] * 4
+        self.dcs = [0] * 4
         self.snm = []
         self.info = "Leerlauf"
 
@@ -207,6 +207,15 @@ class HyperCube:
     '''
     @staticmethod
     def findSubcubeIndex(point, subdivisions):
+        '''
+        subcubeIndex = []
+        for i in range(len(point)):
+            index = int(point[i] * subdivisions) - 1
+            if index < 0:
+                index = 0
+            subcubeIndex.append(index)
+        return subcubeIndex
+        '''
         return [max(0, int(p * subdivisions) - 1) for p in point]
 
     @staticmethod
@@ -243,6 +252,12 @@ class HyperCube:
     @staticmethod
     def multiplyArray(arr, factor):
         return [[value * factor for value in row] for row in arr]
+        '''
+        for row in arr:
+            for i, value in enumerate(row):
+                row[i] *= factor
+        return arr
+        '''
 
     @staticmethod
     def findMatchingArrayIndex(arr, searchArray):
@@ -250,3 +265,14 @@ class HyperCube:
             if arr == search_item:
                 return i
         return None
+        '''
+        for i in range(len(searchArray)):
+            match = True
+            for j in range(len(arr)):
+                if arr[j] != searchArray[i][j]:
+                    match = False
+                    break
+            if match:
+                return i
+        return None
+        '''
