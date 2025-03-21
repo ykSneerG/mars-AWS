@@ -27,3 +27,6 @@ class ColorDiffernce:
 
     def de94_textile(self) -> float:
         return deltaE94(self.LabRef, self.LabSam, weightingFactor=WEIGHTINGFACTOR.Textile)
+    
+    def de94(self, weightingFactor: WEIGHTINGFACTOR) -> float:
+        return deltaE94(self.LabRef, self.LabSam, weightingFactor=WEIGHTINGFACTOR.GraphicArt)

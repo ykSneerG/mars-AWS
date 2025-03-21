@@ -1,6 +1,6 @@
 from typing import Union
-from space.colorSpace import CsLAB, CsLCH
-from space.colorConverter import Cs_Lab2LCH
+from src.code.space.colorSpace import CsLAB, CsLCH
+from src.code.space.colorConverter import Cs_Lab2LCH
 
 
 def delta_lightness(r: Union[CsLAB, CsLCH], s: Union[CsLAB, CsLCH]) -> float:

@@ -162,7 +162,23 @@ def lh_file_uploaded_interpolate_target(event, context):
     handler = InterpolateTarget_Handler(event, context)
     return handler.handle()
 
+# NOT USED !!!
 def lh_file_uploaded_interpolate_target_chs(event, context):
     from src.handlersPredict import InterpolateTarget_cubicHermiteSpline_Handler
     handler = InterpolateTarget_cubicHermiteSpline_Handler(event, context)
     return handler.handle()
+
+
+# - - - COLOR DIFFERENCE - - -
+
+def lh_trafo_delta(event, context):
+    from src.handlersTrafo import Trafo_Delta_Handler
+    handler = Trafo_Delta_Handler(event, context)
+    return handler.handle()
+    # -- USED: MARSAPI --
+
+def lh_trafo_convert_spectral(event, context):
+    from src.handlersTrafo import Trafo_ConvertSpectral_Handler
+    handler = Trafo_ConvertSpectral_Handler(event, context)
+    return handler.handle()
+    # -- USED: MARSAPI --

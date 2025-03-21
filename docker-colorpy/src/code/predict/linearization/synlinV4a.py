@@ -127,12 +127,33 @@ class OptcolorNumpy:
     @staticmethod
     def ksFromSnm(snm: np.ndarray) -> np.ndarray:
         """Computes ks from snm using vectorized NumPy operations."""
+        
         return np.square(1 - snm) / (2 * snm)
+        
+        #get the highest value of the array
+        # = np.max(snm)
+        
+        # for each element in the array, with a max_value greater 1 np.square(snm) / (2 * snm) else np.square(1 - snm) / (2 * snm)
+        
+        return np.where(snm > 1, np.square(snm -1) / (2 * snm), np.square(1 - snm) / (2 * snm))
+        
+        #return np.where(max_value > 1, snm, np.square(1 - snm) / (2 * snm))
+        
+        if max_value > 1:
+            return snm
+        else:
+            return np.square(1 - snm) / (2 * snm)
+        #return snm
 
     @staticmethod
     def ksToSnm(ks: np.ndarray) -> np.ndarray:
         """Computes snm from ks using vectorized NumPy operations."""
         return 1 + ks - np.sqrt(ks**2 + 2 * ks)
+        
+        return ks
+        
+        max_value = np.max(ks)
+        return np.where(ks > 1, ks, 1 + ks - np.sqrt(ks**2 + 2 * ks))
 
     @staticmethod
     def ksFulltoneInk(ksMedia: np.ndarray, ksSolid: np.ndarray) -> np.ndarray:

@@ -2,7 +2,7 @@ from typing import Union
 import numpy as np  # type: ignore
 
 from src.code.space.colorSpace import CsXYZ, MAXVAL_CS_XYZ, MAXVAL_CS_RGB
-from src.code.space.colorConstants.illuminant import OBSERVER, Illuminant
+from src.code.space.colorConstants.illuminant import OBSERVER, AdaptionBaseMatrix, Illuminant
 from src.code.space.colorConstants.matrixRGB import MatrixRGB2XYZ
 from src.code.space.colorConstants.weightningFunctions import Cmf2degNumpy, Cmf10degNumpy
 
@@ -28,8 +28,7 @@ class ColorTrafoNumpy:
         refWhite: CsXYZ = Illuminant.D50_DEG2
     ):
         self._set_observer(observer)
-        self.refWhite = refWhite.to_numpy().astype(np.float32)
-        self.rgb_matrix = np.array(MatrixRGB2XYZ.SRGB_D50, dtype=np.float32)
+        self._set_illuminant(refWhite)
         self._precompute_constants()
 
     def _precompute_constants(self):
@@ -54,6 +53,25 @@ class ColorTrafoNumpy:
         self.cmf_T = weights
         self.observer = observer
 
+    def _set_illuminant(self, illuminant: CsXYZ = Illuminant.D50_DEG2):
+        
+        self.refWhite = illuminant.to_numpy().astype(np.float32)
+        
+        if illuminant == Illuminant.D50_DEG2:
+            self.rgb_matrix = np.array(MatrixRGB2XYZ.SRGB_D50, dtype=np.float32)
+        else:
+            adaption_matrix = AdaptionBaseMatrix.get_matrix(
+                AdaptionBaseMatrix.Bradford,
+                AdaptionBaseMatrix.BradfordInvers,
+                illuminant,
+                Illuminant.D50_DEG2
+            )
+            
+            self.rgb_matrix = np.dot(
+                np.array(adaption_matrix, dtype=np.float32), 
+                np.array(MatrixRGB2XYZ.SRGB_D50, dtype=np.float32)
+            )
+
 
     def CS_SNM2XYZ(self, curveNM: np.ndarray) -> np.ndarray:
         """Vectorized spectral to XYZ conversion"""
@@ -69,6 +87,7 @@ class ColorTrafoNumpy:
         scaled_xyz = xyz * self.scale_xyz
         lin_rgb = np.dot(scaled_xyz, self.rgb_matrix.T)
         return self._sRGBcompanding(lin_rgb) * self.scale_rgb
+    
 
     def Cs_XYZ2HEX(self, xyz: np.ndarray) -> Union[str, np.ndarray]:
         """Vectorized XYZ to HEX conversion"""
@@ -128,6 +147,8 @@ class ColorTrafoNumpy:
             np.round(chroma, 2).astype(np.float32),
             np.round(hue, 2).astype(np.float32)
         ], axis=-1)
+
+    
 
 
     def _sRGBcompanding(self, rgb: np.ndarray) -> np.ndarray:

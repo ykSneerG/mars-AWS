@@ -1,5 +1,5 @@
 import math
-from space.colorSpace import CsLAB
+from src.code.space.colorSpace import CsLAB
 
 
 def deltaECMC(r: CsLAB, s: CsLAB, CMC_L: float = 2, CMC_C: float = 1) -> float:

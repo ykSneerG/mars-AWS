@@ -4,8 +4,8 @@ from src.code.colorMath import CmMath
 
 
 class OBSERVER(str, Enum):
-    DEG2 = 'Deg2'
-    DEG10 = 'Deg10'
+    DEG2 = "Deg2"
+    DEG10 = "Deg10"
 
 
 class Illuminant:
@@ -68,6 +68,28 @@ class Illuminant:
     """
     Observer= 2°, Illuminant= F11 (CsXYZ)
     """
+    
+    TL84_DEG2 = CsXYZ(1.00001, 1.000, 1.19828)
+    """
+    Observer= 2°, Illuminant= TL84 (CsXYZ)
+    """
+    
+        
+
+    A_DEG10 = CsXYZ(1.1114, 1.00000, 0.3520)
+    """
+    Observer= 10°, Illuminant= A (CsXYZ) from ChatGPT
+    """
+
+    B_DEG10 = CsXYZ(0.9909, 1.00000, 0.8498)
+    """
+    Observer= 10°, Illuminant= B (CsXYZ) from ChatGPT
+    """
+
+    C_DEG10 = CsXYZ(0.9729, 1.00000, 1.1614)
+    """
+    Observer= 10°, Illuminant= C (CsXYZ) from ChatGPT
+    """
 
     D50_DEG10 = CsXYZ(0.9672, 1.000, 0.8143)
     """
@@ -89,6 +111,32 @@ class Illuminant:
     Observer= 10°, Illuminant= D75 (CsXYZ)
     """
 
+    E_DEG10 = CsXYZ(1.00000, 1.00000, 1.00000)
+    """
+    Observer= 2°, Illuminant= E, equal energy (CsXYZ) from ChatGPT
+    """
+
+    F2_DEG10 = CsXYZ(1.0328, 1.00000, 0.6902)
+    """
+    Observer= 10°, Illuminant= F2 (CsXYZ) from ChatGPT
+    """
+
+    F7_DEG10 = CsXYZ(0.9579, 1.00000, 0.9911)
+    """
+    Observer= 10°, Illuminant= F7 (CsXYZ) from ChatGPT
+    """
+
+    F11_DEG10 = CsXYZ(1.0386, 1.00000, 0.6569)
+    """
+    Observer= 10°, Illuminant= F11 (CsXYZ) from ChatGPT
+    """
+    
+    TL84_DEG10 = CsXYZ(0.99616, 1.000, 1.18669)
+    """
+    Observer= 10°, Illuminant= TL84 (CsXYZ)
+    """
+    
+
     @staticmethod
     def get_List():
         return {
@@ -103,51 +151,106 @@ class Illuminant:
             "F2_DEG2": Illuminant.F2_DEG2.to_json(),
             "F7_DEG2": Illuminant.F7_DEG2.to_json(),
             "F11_DEG2": Illuminant.F11_DEG2.to_json(),
+            "TL84_DEG2": Illuminant.TL84_DEG2.to_json(),
+            "A_DEG10": Illuminant.A_DEG10.to_json(),
+            "B_DEG10": Illuminant.B_DEG10.to_json(),
+            "C_DEG10": Illuminant.C_DEG10.to_json(),
             "D50_DEG10": Illuminant.D50_DEG10.to_json(),
             "D55_DEG10": Illuminant.D55_DEG10.to_json(),
             "D65_DEG10": Illuminant.D65_DEG10.to_json(),
-            "D75_DEG10": Illuminant.D75_DEG10.to_json()
+            "D75_DEG10": Illuminant.D75_DEG10.to_json(),
+            "E_DEG10": Illuminant.E_DEG10.to_json(),
+            "F2_DEG10": Illuminant.F2_DEG10.to_json(),
+            "F7_DEG10": Illuminant.F7_DEG10.to_json(),
+            "F11_DEG10": Illuminant.F11_DEG10.to_json(),
+            "TL84_DEG10": Illuminant.TL84_DEG10.to_json()
         }
+
+    @staticmethod
+    def get_Dict_Deg2():
+        return {
+            "D50": Illuminant.D50_DEG2,
+            "D55": Illuminant.D55_DEG2,
+            "D65": Illuminant.D65_DEG2,
+            "D75": Illuminant.D75_DEG2,
+            "E": Illuminant.E_DEG2,
+            "F2": Illuminant.F2_DEG2,
+            "F7": Illuminant.F7_DEG2,
+            "F11": Illuminant.F11_DEG2,
+            "A": Illuminant.A_DEG2,
+            "B": Illuminant.B_DEG2,
+            "C": Illuminant.C_DEG2,
+            "TL84": Illuminant.TL84_DEG2
+        }
+    
+    @staticmethod
+    def get_Dict_Deg10():
+        return {
+            "D50": Illuminant.D50_DEG10,
+            "D55": Illuminant.D55_DEG10,
+            "D65": Illuminant.D65_DEG10,
+            "D75": Illuminant.D75_DEG10,
+            "E": Illuminant.E_DEG10,
+            "F2": Illuminant.F2_DEG10,
+            "F7": Illuminant.F7_DEG10,
+            "F11": Illuminant.F11_DEG10,
+            "A": Illuminant.A_DEG10,
+            "B": Illuminant.B_DEG10,
+            "C": Illuminant.C_DEG10,
+            "TL84": Illuminant.TL84_DEG10
+        }
+
+    @staticmethod
+    def find_illuminant(illuminant: str, observer: OBSERVER) -> CsXYZ:
+        if observer == OBSERVER.DEG2:
+            illuminant_dict = Illuminant.get_Dict_Deg2()
+        elif observer == OBSERVER.DEG10:
+            illuminant_dict = Illuminant.get_Dict_Deg10()
+        else:
+            raise ValueError(f"Invalid observer type: {observer}")
+
+        if illuminant not in illuminant_dict:
+            raise ValueError(f"Invalid illuminant: {illuminant}")
+
+        return illuminant_dict[illuminant]
 
 
 class AdaptionBaseMatrix:
 
-    XYZscaling = [
-        [1.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0]]
+    XYZscaling = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
 
-    XYZscalingInvers = [
-        [1.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 0.0, 1.0]]
+    XYZscalingInvers = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
 
     Bradford = [
-        [ 0.8951,  0.2664, -0.1614],
-        [-0.7502,  1.7135,  0.0367],
-        [ 0.0389, -0.0685,  1.0296]]
+        [0.8951, 0.2664, -0.1614],
+        [-0.7502, 1.7135, 0.0367],
+        [0.0389, -0.0685, 1.0296],
+    ]
 
     BradfordInvers = [
-        [ 0.98699311, -0.14705423, 0.15996270],
-        [ 0.43230528,  0.51836027, 0.04929123],
-        [-0.00852866,  0.04004282, 0.96848673]]
+        [0.98699311, -0.14705423, 0.15996270],
+        [0.43230528, 0.51836027, 0.04929123],
+        [-0.00852866, 0.04004282, 0.96848673],
+    ]
 
     VonKries = [
-        [ 0.4002400, 0.7076000, -0.0808100],
-        [-0.2263000, 1.1653200,  0.0457000],
-        [ 0.0000000, 0.0000000,  0.9182200]]
+        [0.4002400, 0.7076000, -0.0808100],
+        [-0.2263000, 1.1653200, 0.0457000],
+        [0.0000000, 0.0000000, 0.9182200],
+    ]
 
     VonKriesInvers = [
-        [1.8599364, -1.1293816,  0.2198974],
-        [0.3611914,  0.6388125, -0.0000064],
-        [0.0000000,  0.0000000,  1.0890636]]
-
+        [1.8599364, -1.1293816, 0.2198974],
+        [0.3611914, 0.6388125, -0.0000064],
+        [0.0000000, 0.0000000, 1.0890636],
+    ]
+        
     @staticmethod
     def get_matrix(
         baseMatrix: list[list[float]],
         baseMatrixInvers: list[list[float]],
         srcXYZ: CsXYZ,
-        dstXYZ: CsXYZ
+        dstXYZ: CsXYZ,
     ) -> list[list[float]]:
 
         src = CmMath.matrix3x3_1x3(baseMatrix, srcXYZ.to_list())
@@ -156,9 +259,9 @@ class AdaptionBaseMatrix:
         dia = [
             [(dst[0] / src[0]), 0, 0],
             [0, (dst[1] / src[1]), 0],
-            [0, 0, (dst[2] / src[2])]]
+            [0, 0, (dst[2] / src[2])],
+        ]
 
         return CmMath.matrix3x3_3x3(
-            CmMath.matrix3x3_3x3(baseMatrixInvers, dia),
-            baseMatrix
+            CmMath.matrix3x3_3x3(baseMatrixInvers, dia), baseMatrix
         )

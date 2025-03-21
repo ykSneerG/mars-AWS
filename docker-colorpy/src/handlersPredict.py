@@ -20,7 +20,7 @@ from itertools import chain
 import orjson # type: ignore
 
 from src.code.predict.interpolateTarget import FilterMahalanobis, ModernRBFkernel, SavitzkyGolaySmoothing, ModernCubicHermeticSplineInterpolator
-
+from src.code.space.colorSample import SampleDevice4C
 
 
 class Predict_LinearInterpolation_Handler(BaseLambdaHandler):
@@ -877,6 +877,8 @@ class InterpolateTarget_Handler(BaseLambdaHandler):
         "interpolation": 1,
         "smoothing": smoothing,
     };
+    
+    ""dst_dcs" chnged to the id of the JSON FILE with DCS informations
     """
     
     def scaleToRange(value, min_value, max_value):
@@ -908,8 +910,12 @@ class InterpolateTarget_Handler(BaseLambdaHandler):
         
         if self.event.get("steps"):
             dst_dcs = GradientMixGenerator.generate_dcs_tolist(np.linspace(0, 100, self.event["steps"]), 4)
+            rowlength = self.event["steps"]
         else:
-            dst_dcs = self.event["dst_dcs"]
+            id = self.event.get("dst_dcs", 0)
+            sam = SampleDevice4C(None, id)
+            dst_dcs = sam.get_data()
+            rowlength = sam.get_rowlength()
         
         
         # --- FILTER MAHALANOBIS ---
@@ -968,6 +974,7 @@ class InterpolateTarget_Handler(BaseLambdaHandler):
             result = colors
 
         jd = {
+            "rowlength": rowlength,
             "elapsed": self.get_elapsed_time(),
             "result": result
         }

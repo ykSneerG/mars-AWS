@@ -1,7 +1,7 @@
 import math
 import statistics
-from space.colorSpace import CsLAB
-from colorMath import CmAngle
+from src.code.space.colorSpace import CsLAB
+from src.code.colorMath import CmAngle
 
 
 # declare constants

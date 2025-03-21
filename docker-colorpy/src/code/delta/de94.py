@@ -1,6 +1,6 @@
 import math
 from enum import Enum
-from space.colorSpace import CsLAB
+from src.code.space.colorSpace import CsLAB
 
 
 class WEIGHTINGFACTOR(Enum):
