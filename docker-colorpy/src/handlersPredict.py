@@ -19,7 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import chain
 import orjson # type: ignore
 
-from src.code.predict.interpolateTarget import FilterMahalanobis, ModernRBFkernel, SavitzkyGolaySmoothing, ModernCubicHermeticSplineInterpolator
+from src.code.predict.interpolateTarget import FilterMahalanobis, ModernRBFkernel, ModernCubicHermeticSplineInterpolator
 from src.code.space.colorSample import SampleDevice4C
 
 
@@ -123,29 +123,6 @@ class GradientMixGenerator:
                 result.append(mix.tolist())  # Convert to list before appending
 
         return result
-        
-        """ 
-        result = []
-        
-        gradient = gradient.tolist()
-        
-        # For each dimension
-        for dim in range(dimension):
-            # Create a base array of zeros with length = dimension 
-            base = np.zeros(dimension)
-            
-            # For each gradient value
-            for g in gradient:
-                # Create copy of base array
-                mix = base.copy()
-                # Set current dimension to gradient value
-                mix[dim] = g
-                # Add to result
-                result.append(mix)
-                
-        # Convert numpy arrays to regular lists
-        return result
-        """
         
         
 class SlsHelper:
@@ -955,7 +932,6 @@ class InterpolateTarget_Handler(BaseLambdaHandler):
         rbf_model.precompute_interpolator()
 
         # ✅ **Cloud-friendly list-based usage**
-        """ [[0.2, 0.3, 0.5, 0.1, 0.6, 0.4], [0.6, 0.1, 0.2, 0.4, 0.3, 0.7]] """
         dst_pcs = rbf_model.interpolate_spectral_data(dst_dcs)
         
         # check if all elements of the dst_pcs is not below 0
@@ -985,7 +961,6 @@ class InterpolateTarget_Handler(BaseLambdaHandler):
 # -- DELETE -- DELETE -- DELETE -- DELETE -- DELETE -- DELETE -- DELETE -- DELETE --
 
 from src.code.predict.interpolateTarget import RadialBasisFunction
-
 class InterpolateTarget_RBF_Handler(BaseLambdaHandler):
     
     def handle(self):
@@ -1020,9 +995,7 @@ class InterpolateTarget_RBF_Handler(BaseLambdaHandler):
         return self.get_common_response(jd)
 
 
-
 from  src.code.predict.interpolateTarget import OptimizedRBFInterpolator3
-
 class InterpolateTarget_OptRBF_Handler(BaseLambdaHandler):
     
     
@@ -1056,5 +1029,3 @@ class InterpolateTarget_OptRBF_Handler(BaseLambdaHandler):
             "dst_pcs": dst_pcs.tolist()
         })
         return self.get_common_response(jd)
-
-

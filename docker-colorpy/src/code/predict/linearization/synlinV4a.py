@@ -41,6 +41,17 @@ class SynLinSolidV4a(BaseLinearization):
 
         ksMedia = OptcolorNumpy.ksFromSnm(np.array(self.media))
         ksSolid = OptcolorNumpy.ksFromSnm(np.array(self.solid))
+        
+        # check ksMedia and ksSolid for elements greater than 1 and fill them in ksfluos else 1 
+        media = np.array(self.media)
+        solid = np.array(self.solid)
+        
+        # First, ensure that values less than 1 are set to 1 for both media and solid
+        mediaFluos = np.maximum(media, 1)
+        solidFluos = np.maximum(solid, 1)
+
+        # Now take the element-wise maximum between the two arrays
+        ksFluos = np.maximum(mediaFluos, solidFluos)
 
         # - + - + - + - + ESTIMATE THE CURVE IN 3D SPACE - + - + - + - + -
 
@@ -50,7 +61,7 @@ class SynLinSolidV4a(BaseLinearization):
         trafo: ColorTrafoNumpy = ColorTrafoNumpy()
         func_SNM2Target = trafo.CS_SNM2XYZ if self.space == "XYZ" else trafo.Cs_SNM2LAB
 
-        nps_snm = OptcolorNumpy.ksMix(ksMedia, ksSolid, cMedia, cSolid)
+        nps_snm = OptcolorNumpy.ksMix(ksMedia, ksSolid, cMedia, cSolid, ksFluos)
         nps = func_SNM2Target(nps_snm)
 
         ce = CurveEstimator3D()
@@ -75,7 +86,7 @@ class SynLinSolidV4a(BaseLinearization):
 
                 mid = (low + high) * 0.5  # Midpoint for binary search
                 
-                estimat_SNM[j] = OptcolorNumpy.ksMix(ksMedia, ksSolid, 1 - mid, mid)
+                estimat_SNM[j] = OptcolorNumpy.ksMix(ksMedia, ksSolid, 1 - mid, mid, ksFluos)
                 tmp = func_SNM2Target(estimat_SNM[j])
                 current_POS[j] = ce.calculate_percentage(tmp)
 
@@ -101,7 +112,8 @@ class SynLinSolidV4a(BaseLinearization):
 
         if self.debug:
             response.update(
-                {
+                {   
+                    "ksFluos": ksFluos.tolist(),  
                     "ksMedia": ksMedia.tolist(),
                     "ksSolid": ksSolid.tolist(),
                     "loops": loop,
@@ -128,32 +140,47 @@ class OptcolorNumpy:
     def ksFromSnm(snm: np.ndarray) -> np.ndarray:
         """Computes ks from snm using vectorized NumPy operations."""
         
-        return np.square(1 - snm) / (2 * snm)
+        # --- DEFALUT CALCULACTION FOR SNM TO KS ---
+        # return np.square(1 - snm) / (2 * snm)
         
-        #get the highest value of the array
-        # = np.max(snm)
+        # --- OPTIMIZED CALCULATION FOR SNM TO KS COMPENSATE FLUORESCENCE ---
+        # replace all values smaller 1e-4 with 1e-3
+        snm = np.where(snm < 1e-4, 1e-4, snm)
         
-        # for each element in the array, with a max_value greater 1 np.square(snm) / (2 * snm) else np.square(1 - snm) / (2 * snm)
+        return np.where(
+            snm > 1, 
+            1e-8 / (2 * snm), 
+            np.where(snm != 0, np.square(1 - snm) / (2 * snm), 1e-8)  # Handle snm == 0 safely
+        )
         
-        return np.where(snm > 1, np.square(snm -1) / (2 * snm), np.square(1 - snm) / (2 * snm))
+    @staticmethod
+    def compensateFluorescence(lower: float, upper: float, value: float) -> float:
+        """Scales value from [lower, 1] to [lower, upper] while preserving values below lower."""
         
-        #return np.where(max_value > 1, snm, np.square(1 - snm) / (2 * snm))
+        value = np.asarray(value)  # Ensure it's an array for broadcasting
+        scale_factor = (upper - lower) / (1 - lower)  # Compute scaling factor
         
-        if max_value > 1:
-            return snm
-        else:
-            return np.square(1 - snm) / (2 * snm)
-        #return snm
+        return np.where(
+            value < lower, 
+            value,  # Keep original value if below lower
+            lower + (value - lower) * scale_factor  # Apply transformation
+        )
 
     @staticmethod
-    def ksToSnm(ks: np.ndarray) -> np.ndarray:
+    def ksToSnm(ks: np.ndarray, ksFluos: np.ndarray) -> np.ndarray:
         """Computes snm from ks using vectorized NumPy operations."""
-        return 1 + ks - np.sqrt(ks**2 + 2 * ks)
         
-        return ks
+        # --- DEFALUT CALCULACTION FOR KS TO SNM ---
+        #return 1 + ks - np.sqrt(ks**2 + 2 * ks)
         
-        max_value = np.max(ks)
-        return np.where(ks > 1, ks, 1 + ks - np.sqrt(ks**2 + 2 * ks))
+        nm = (1 + ks - np.sqrt(ks**2 + 2 * ks))
+        
+        if np.all(ksFluos <= 1):
+            return nm  # If all values are <= 1, return nm directly
+        
+        # Ensure ksFluos is broadcastable with ks
+        ksFluos = np.broadcast_to(ksFluos, ks.shape)
+        return OptcolorNumpy.compensateFluorescence(0.75, ksFluos, nm)
 
     @staticmethod
     def ksFulltoneInk(ksMedia: np.ndarray, ksSolid: np.ndarray) -> np.ndarray:
@@ -162,8 +189,11 @@ class OptcolorNumpy:
 
     @staticmethod
     def ksMix(
-        ksMedia: np.ndarray, ksSolid: np.ndarray, 
-        cMedia: Union[float, np.ndarray], cSolid: Union[float, np.ndarray]
+        ksMedia: np.ndarray, 
+        ksSolid: np.ndarray, 
+        cMedia: Union[float, np.ndarray], 
+        cSolid: Union[float, np.ndarray],
+        ksFluos: np.ndarray
     ) -> np.ndarray:
         """
         Optimized ksMix using broadcasting.
@@ -180,4 +210,7 @@ class OptcolorNumpy:
         ksMix = (ksMedia[:, np.newaxis] * cMedia) + (ksSolid[:, np.newaxis] * cSolid)
 
         # Convert to snm and return with correct transposition
-        return OptcolorNumpy.ksToSnm(ksMix).T  # Shape: (M, 36)
+        #return OptcolorNumpy.ksToSnm(ksMix).T  # Shape: (M, 36)
+        ksFluos = ksFluos[:, np.newaxis]  # Shape becomes (36, 1)
+        return OptcolorNumpy.ksToSnm(ksMix, ksFluos).T  # Shape: (M, 36)).T  # Shape: (M, 36)
+        

@@ -22,7 +22,6 @@ class SampleBase:
         return self.dataset["description"]
 
 
-
 class SampleSpectral(SampleBase):
     
     def __init__(self, filepath: str, id: int = 0):

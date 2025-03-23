@@ -32,39 +32,20 @@ class Trafo_Delta_Handler(BaseLambdaHandler):
 class Trafo_ConvertSpectral_Handler(BaseLambdaHandler):
 
     def handle(self):
-        
-        """ 
-        const body = {
-            "SNM": snm,
-            "observer": observer,
-            "illuminant": illuminant,
-            "inclSourceValues": true,
-            "inclLAB": true,
-            "inclLCH": true,
-            "inclXYZ": true,
-            "inclRGB": false,
-            "inclDensity": false,
-            "inclHEX": true
-        }
-        """
 
         spectral = self.event["SNM"]
         
         usr_observer = OBSERVER.DEG10 if self.event.get("observer") == "Deg10" else OBSERVER.DEG2
-                
         usr_illuminant = Illuminant.find_illuminant(self.event.get("illuminant"), usr_observer)
 
-        
-        colortrafo = ctn(usr_observer, usr_illuminant)
-        colortrafo._set_illuminant(usr_illuminant)
-        
+        trafo = ctn(usr_observer, usr_illuminant)
+
         dst_values = {
             "XYZ": True,
             "HEX": True,
             "LAB": True,
             "LCH": True
         }
-        result = colortrafo.Cs_SNM2MULTI(spectral, dst_values)
-        
-        return self.get_common_response(result)
+        result = trafo.Cs_SNM2MULTI(spectral, dst_values)
 
+        return self.get_common_response(result)
