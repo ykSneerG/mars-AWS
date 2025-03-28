@@ -82,6 +82,101 @@ class ColorTrafoNumpy:
         return self.Cs_XYZ2LAB(xyz)
     
 
+    
+    def Cs_SNM2OKLAB(self, curveNM: np.ndarray) -> np.ndarray:
+        """Vectorized spectral to OKLAB conversion"""
+        xyz = self.CS_SNM2XYZ(curveNM)
+        return self.Cs_XYZ2OKLAB(xyz)
+    
+    def Cs_XYZ2OKLAB(self, xyz: np.ndarray) -> np.ndarray:
+        """Optimized vectorized XYZ to OKLAB conversion"""
+        
+        # Precompute the transformation matrices
+        xyz_to_lms = np.array([
+            [ 0.8189330101,  0.3618667424, -0.1288597137],
+            [ 0.0329845436,  0.9293118715,  0.0361456387],
+            [ 0.0482003018,  0.2643662691,  0.6338517070]
+        ])
+        
+        lms_to_oklab = np.array([
+            [ 0.2104542553,  0.7936177850, -0.0040720468],
+            [ 1.9779984951, -2.4285922050,  0.4505937099],
+            [ 0.0259040371,  0.7827717662, -0.8086757660]
+        ])
+        
+        # Step 1: Convert XYZ to LMS (matrix multiplication)
+        LMS = np.dot(xyz, xyz_to_lms.T)  # shape (n, 3)
+        
+        # Step 2: Apply nonlinear transformation (cube root) for each component
+        LMS = np.cbrt(LMS)  # Cube root of each element (vectorized operation)
+
+        # Step 3: Convert LMS to OKLab (matrix multiplication)
+        OKLab = np.dot(LMS, lms_to_oklab.T)  # shape (n, 3)
+
+        return OKLab
+
+
+    def Cs_SNM2CIECAM16(self, curveNM: np.ndarray) -> np.ndarray:
+        """Convert XYZ to CIECAM16 color space"""
+        xyz = self.CS_SNM2XYZ(curveNM)   
+        return self.Cs_XYZ2CIECAM16(xyz)
+
+
+
+    def Cs_XYZ2CIECAM16(self, xyz: np.ndarray, L_A=64, Y_b=20, F=1.0, c=0.69, N_c=1.0) -> np.ndarray:
+        """
+        XYZ to CIECAM16 conversion that maintains identical interface to OKLab version
+        Returns Nx3 array of [J (lightness), a (red-green), b (yellow-blue)] in perceptual space
+        """
+        # Input validation and conversion
+        if not isinstance(xyz, np.ndarray):
+            xyz = np.array(xyz, dtype=np.float64)
+        
+        original_shape = xyz.shape
+        if xyz.ndim == 1:
+            xyz = xyz[np.newaxis, :]
+        elif xyz.ndim > 2:
+            raise ValueError("Input must be 1D or 2D array")
+        
+        if xyz.shape[1] != 3:
+            raise ValueError(f"Input must have 3 columns. Got shape {original_shape}")
+
+        # CIECAM16 transformation matrices
+        xyz_to_lms = np.array([
+            [0.401288,  0.650173, -0.051461],
+            [-0.250268, 1.204414,  0.045854],
+            [-0.002079, 0.048952,  0.953127]
+        ], dtype=np.float64)
+
+        # 1. Convert XYZ to LMS
+        LMS = xyz @ xyz_to_lms.T  # Matrix multiplication
+
+        # 2. Chromatic adaptation
+        D = F * (1 - (1/3.6) * np.exp((-L_A - 42)/92))
+        Y = xyz[:, 1].reshape(-1, 1)  # Ensure column vector
+        LMS_c = LMS * (D * Y_b/Y + 1 - D)
+
+        # 3. Nonlinear response
+        k = 1 / (5*L_A + 1)
+        F_L = 0.2 * k**4 * (5*L_A) + 0.1 * (1 - k**4)**2 * (5*L_A)**(1/3)
+        LMS_prime = (F_L * LMS_c/100)**0.42
+        LMS_a = 400 * np.sign(LMS_prime) * np.abs(LMS_prime) / (np.abs(LMS_prime) + 27.13)
+
+        # 4. Calculate opponent dimensions
+        a = LMS_a[:, 0] - (12/11)*LMS_a[:, 1] + (1/11)*LMS_a[:, 2]  # Red-Green
+        b = (1/9)*(LMS_a[:, 0] + LMS_a[:, 1] - 2*LMS_a[:, 2])       # Yellow-Blue
+
+        # 5. Calculate lightness (J)
+        A = (2*LMS_a[:, 0] + LMS_a[:, 1] + 0.05*LMS_a[:, 2])/3.05
+        LMS_w_prime = (F_L * Y_b/100)**0.42
+        LMS_w_a = 400 * LMS_w_prime / (LMS_w_prime + 27.13)
+        A_w = (2*LMS_w_a + LMS_w_a + 0.05*LMS_w_a)/3.05
+        J = 100 * (A/A_w)**(c*F_L)
+
+        # Return in same Cartesian format as OKLab: [Lightness, a, b]
+        return np.array(np.column_stack((J, a, b)), dtype=np.float32).reshape(original_shape[0] if len(original_shape) == 1 else original_shape)
+
+
     def Cs_XYZ2RGB(self, xyz: np.ndarray) -> np.ndarray:
         """Batch XYZ to RGB conversion"""
         scaled_xyz = xyz * self.scale_xyz

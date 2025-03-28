@@ -31,27 +31,29 @@ class SynLinSolidV4a(BaseLinearization):
         self.precision = value
 
     def set_space(self, value):
-        if value not in ["XYZ", "LAB"]:
-            raise ValueError("Space must be 'XYZ', 'LAB'")
+        if value not in ["XYZ", "LAB", "OKLAB", "CIECAM16"]:
+            raise ValueError("Space must be 'XYZ', 'LAB', 'OKLAB', or 'CIECAM16'")
         self.space = value
 
     def start_Curve3D(self):
 
         # - + - + - + - + CHECK THE LIGHT and DARK TENDENCIES - + - + - + - + -
-
-        ksMedia = OptcolorNumpy.ksFromSnm(np.array(self.media))
-        ksSolid = OptcolorNumpy.ksFromSnm(np.array(self.solid))
-        
-        # check ksMedia and ksSolid for elements greater than 1 and fill them in ksfluos else 1 
         media = np.array(self.media)
         solid = np.array(self.solid)
         
+        ksMedia = OptcolorNumpy.ksFromSnm(media)
+        ksSolid = OptcolorNumpy.ksFromSnm(solid)
+        
+        ksFluos = np.maximum(np.maximum(media, solid), 1)
+               
+        """
         # First, ensure that values less than 1 are set to 1 for both media and solid
         mediaFluos = np.maximum(media, 1)
         solidFluos = np.maximum(solid, 1)
 
         # Now take the element-wise maximum between the two arrays
         ksFluos = np.maximum(mediaFluos, solidFluos)
+        """
 
         # - + - + - + - + ESTIMATE THE CURVE IN 3D SPACE - + - + - + - + -
 
@@ -59,7 +61,10 @@ class SynLinSolidV4a(BaseLinearization):
         cMedia = 1 - cSolid
         
         trafo: ColorTrafoNumpy = ColorTrafoNumpy()
-        func_SNM2Target = trafo.CS_SNM2XYZ if self.space == "XYZ" else trafo.Cs_SNM2LAB
+        func_SNM2Target = trafo.CS_SNM2XYZ if self.space == "XYZ" \
+            else trafo.Cs_SNM2OKLAB if self.space == "OKLAB" \
+            else trafo.Cs_SNM2CIECAM16 if self.space == "CIECAM16" \
+            else trafo.Cs_SNM2LAB
 
         nps_snm = OptcolorNumpy.ksMix(ksMedia, ksSolid, cMedia, cSolid, ksFluos)
         nps = func_SNM2Target(nps_snm)

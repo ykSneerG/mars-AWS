@@ -189,7 +189,7 @@ class SlsHelper:
         return SlsHelper.mix_concentration(sls, color1, color2, 0.75, darken)
 
     @staticmethod
-    def mix_all(sls, color1, color2, steps):
+    def mix_all(sls: SynLinSolidV4a, color1, color2, steps):
         sls.set_gradient_by_steps(steps)
         sls.set_media(color1)
         sls.set_solid(color2)
@@ -278,7 +278,7 @@ class Predict_SynlinV4Multi_Handler(BaseLambdaHandler):
         
         # --- 2. PREDICT RAIL ---
         rails = []
-        sls = SlsHelper.initClass(debug, space, preci, toler)
+        sls: SynLinSolidV4a = SlsHelper.initClass(debug, space, preci, toler)
         
         for corner in corners:
             rail = SlsHelper.mix_all(sls, corner[0], corner[1], STEPS)
@@ -674,7 +674,7 @@ class Predict_SynHyperFourV4_Parallel_Handler(BaseLambdaHandler):
         jd.update({
             "UPID": datastore_cgats_result["UPID"],
             "bytes": datastore_cgats_result["bytes"],
-            "color": rail_flattened[:122],
+            "color": rail_flattened[:256],
             "elapsed": self.get_elapsed_time()
         })
         
@@ -887,7 +887,7 @@ class InterpolateTarget_Handler(BaseLambdaHandler):
         
         if self.event.get("steps"):
             dst_dcs = GradientMixGenerator.generate_dcs_tolist(np.linspace(0, 100, self.event["steps"]), 4)
-            rowlength = self.event["steps"]
+            rowlength = self.event["steps"] * self.event["steps"]
         else:
             id = self.event.get("dst_dcs", 0)
             sam = SampleDevice4C(None, id)
