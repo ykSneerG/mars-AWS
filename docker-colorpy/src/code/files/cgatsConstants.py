@@ -86,6 +86,15 @@ class CgatsConstants:
                 'SPECTRAL_NM_610', 'SPECTRAL_NM_620', 'SPECTRAL_NM_630', 'SPECTRAL_NM_640', 'SPECTRAL_NM_650',
                 'SPECTRAL_NM_660', 'SPECTRAL_NM_670', 'SPECTRAL_NM_680', 'SPECTRAL_NM_690', 'SPECTRAL_NM_700',
                 'SPECTRAL_NM_710', 'SPECTRAL_NM_720', 'SPECTRAL_NM_730'])
+    SNM2_TPLS = ("SNM", [
+                'SPECTRAL_NM380', 'SPECTRAL_NM390', 'SPECTRAL_NM400',
+                'SPECTRAL_NM410', 'SPECTRAL_NM420', 'SPECTRAL_NM430', 'SPECTRAL_NM440', 'SPECTRAL_NM450',
+                'SPECTRAL_NM460', 'SPECTRAL_NM470', 'SPECTRAL_NM480', 'SPECTRAL_NM490', 'SPECTRAL_NM500',
+                'SPECTRAL_NM510', 'SPECTRAL_NM520', 'SPECTRAL_NM530', 'SPECTRAL_NM540', 'SPECTRAL_NM550',
+                'SPECTRAL_NM560', 'SPECTRAL_NM570', 'SPECTRAL_NM580', 'SPECTRAL_NM590', 'SPECTRAL_NM600',
+                'SPECTRAL_NM610', 'SPECTRAL_NM620', 'SPECTRAL_NM630', 'SPECTRAL_NM640', 'SPECTRAL_NM650',
+                'SPECTRAL_NM660', 'SPECTRAL_NM670', 'SPECTRAL_NM680', 'SPECTRAL_NM690', 'SPECTRAL_NM700',
+                'SPECTRAL_NM710', 'SPECTRAL_NM720', 'SPECTRAL_NM730'])
     LAB_TPLS = ("LAB", ['LAB_L', 'LAB_A', 'LAB_B'])
     XYZ_TPLS = ("XYZ", ['XYZ_X', 'XYZ_Y', 'XYZ_Z'])
     LCH_TPLS = ("LCH", ['LCH_L', 'LCH_C', 'LCH_H'])
@@ -93,6 +102,7 @@ class CgatsConstants:
     @staticmethod
     def get_list_pcs():
         return [CgatsConstants.SNM_TPLS,
+                CgatsConstants.SNM2_TPLS,
                 CgatsConstants.LAB_TPLS,
                 CgatsConstants.XYZ_TPLS,
                 CgatsConstants.LCH_TPLS]

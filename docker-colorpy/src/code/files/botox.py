@@ -52,26 +52,68 @@ class Botox:
                 "error": str(e)
             }
 
+    # def hash_exists(self, hash_value):
+    #     # Check if hash-value exists in S3 bucket and subfolders
+    #     # check if hash-value exists in metadata
+    #     # if not, return False
+    #     # if yes, return True
+        
+    #     res = "notFound"
+        
+    #     """ try: """
+    #         # get all objects in bucket with pagination to avoid timeout
+    #     paginator = self.client.get_paginator('list_objects_v2')
+    #     for obj in paginator.paginate(Bucket=self.bucket_name).search('Contents'):
+    #         # Get the object's metadata
+    #         obj_metadata = self.client.head_object(Bucket=self.bucket_name, Key=obj['Key'])
+    #         if obj_metadata['Metadata'].get('x-amz-meta-filecontenthash') == hash_value:
+    #             # Extract filename from key
+    #             return obj['Key'].split('/')[1].split('.')[0]
+                
+    #     return res
+    #     """ except Exception as e:
+    #         return {
+    #             "error": str(e)
+    #         } """
+    
+    # def hash_exists(self, hash_value):
+    #     """Check if hash_value exists in S3 metadata; return filename if found, else 'notFound'."""
+
+    #     paginator = self.client.get_paginator('list_objects_v2')
+
+    #     for page in paginator.paginate(Bucket=self.bucket_name):
+    #         for obj in page.get('Contents', []):
+    #             if 'Key' in obj:
+    #                 metadata = self.client.head_object(Bucket=self.bucket_name, Key=obj['Key']).get('Metadata', {})
+                    
+    #                 if metadata.get('x-amz-meta-filecontenthash') == hash_value:
+    #                     return obj['Key'].rsplit('/', 1)[-1].split('.')[0]  # Extract filename
+        
+    #     return "notFound"
+    
     def hash_exists(self, hash_value):
-        # Check if hash-value exists in S3 bucket and subfolders
-        # check if hash-value exists in metadata
-        # if not, return False
-        # if yes, return True
-        try:
-            # get all objects in bucket
-            objects = self.client.list_objects_v2(Bucket=self.bucket_name)
-            for obj in objects.get('Contents', []):
-                # Get the object's metadata
-                obj_metadata = self.client.head_object(Bucket=self.bucket_name, Key=obj['Key'])
-                if obj_metadata['Metadata'].get('x-amz-meta-filecontenthash') == hash_value:
-                    # return object key or filename
-                    found_key = obj['Key']
-                    return found_key.split('/')[1].split('.')[0]
-            return False
-        except Exception as e:
-            return {
-                "error": str(e)
-            }
+        """Check if a file with the given hash already exists in S3 metadata."""
+        
+        paginator = self.client.get_paginator('list_objects_v2')
+
+        for page in paginator.paginate(Bucket=self.bucket_name):
+            objects = page.get('Contents', [])
+            
+            # Collect object keys to minimize API calls
+            object_keys = [obj['Key'] for obj in objects]
+
+            # Fetch metadata for each object in batches (reduce API calls)
+            for key in object_keys:
+                try:
+                    metadata = self.client.head_object(Bucket=self.bucket_name, Key=key).get('Metadata', {})
+                    if metadata.get('x-amz-meta-filecontenthash') == hash_value:
+                        return key.rsplit('/', 1)[-1].split('.')[0]  # Extract filename
+                except self.client.exceptions.ClientError as e:
+                    if e.response['Error']['Code'] == '404':
+                        continue  # Object not found (shouldn't happen)
+                    raise  # Other errors should be handled properly
+
+        return "notFound"
 
     def load_S3(self, object_key):
         try:

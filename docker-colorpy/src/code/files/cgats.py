@@ -250,6 +250,18 @@ class Cgats:
 
     def row_all(self):
         return self.dataTable.result
+    
+    def get_values_pcs(self) -> list:
+        """ 
+        Returns the pcs (SNM, XYZ, LCH, LAB) values from the data table 
+        """
+        return [item["pcs"] for item in self.dataTable.result]  
+    
+    def get_values_dcs(self) -> list:
+        """
+        Returns the dcs values from the data table
+        """
+        return [item["dcs"] for item in self.dataTable.result]
 
     def dcs_order(self, order: list[int]):
 

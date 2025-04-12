@@ -56,12 +56,14 @@ class CgatsToJson:
             "LCH": params.get("inclLCH", False),
             "HEX": params.get("inclHEX", False)
         }
-        
+
         self.result = self._convert()
+        
 
     @property
     def get_result(self):
         return self.result
+    
     
     def _convert(self):
 
@@ -73,90 +75,103 @@ class CgatsToJson:
 
             # cgats_head    = myCgats.get_header()
             # cgats_typeDCS = myCgats.get_type_dcs()
-            cgats_typePCS = myCgats.get_type_pcs()
+            # cgats_typePCS = myCgats.get_type_pcs()
             cgats_table = myCgats.row_all()
 
             pcs_values = [entry.get("pcs", []) for entry in cgats_table]
             dcs_values = [entry.get("dcs", []) for entry in cgats_table]
-
-            result = []
             
+        
+            """ pcs_values = myCgats.get_values_pcs()
+            dcs_values = myCgats.get_values_dcs()
+            
+            result = [{"dcs": dcs or [], "pcs": pcs} for dcs, pcs in zip(dcs_values, pcs_values)]                
+            """
+            
+            result = []
+
             for i in range(len(pcs_values)):
                 res = {
-                    "dcs": dcs_values[i],
+                    "dcs": dcs_values[i] or [],
                     "pcs": pcs_values[i]
                 }
                 result.append(res)
 
-        
-            if self.doublets_average:
-                from collections import defaultdict
-
-                dcs_map = defaultdict(list)
-
-                for item in result:
-                    dcs_key = item.get("dcs")
-                    if isinstance(dcs_key, list):  
-                        dcs_key = tuple(dcs_key)  # Convert lists to tuples for hashing
-                    dcs_map[dcs_key].append(item)
-
-                averaged_result = [
-                    {"pcs": [sum(values) / len(values) for values in zip(*[x["pcs"] for x in items])], "dcs": dcs}
-                    if dcs is not None and len(items) > 1 else items[0]
-                    for dcs, items in dcs_map.items()
-                ]
-
-                result[:] = averaged_result
+            # check if dcs_values are all array have length greater 0
+            if all(isinstance(item.get("dcs", []), list) and len(item["dcs"]) > 0 for item in result):
             
-            if self.doublets_remove:
-                seen_dcs = set()
-                removed_result = []
+    
+            #result = self.data
+               
+                if self.doublets_average:
+                    from collections import defaultdict
 
-                for item in result:
-                    try:
-                        dcs_key = item["dcs"]
-                        if isinstance(dcs_key, list):  # Ensure hashability
-                            dcs_key = tuple(dcs_key)
-                    except KeyError:
-                        removed_result.append(item)
-                        continue
+                    dcs_map = defaultdict(list)
 
-                    if dcs_key not in seen_dcs:
-                        seen_dcs.add(dcs_key)
-                        removed_result.append(item)
+                    for item in result:
+                        dcs_key = item.get("dcs")
+                        if isinstance(dcs_key, list):  
+                            dcs_key = tuple(dcs_key)  # Convert lists to tuples for hashing
+                        dcs_map[dcs_key].append(item)
 
-                # Modify result in-place using slice assignment (faster in AWS Lambda)
-                result[:] = removed_result
+                    averaged_result = [
+                        {"pcs": [sum(values) / len(values) for values in zip(*[x["pcs"] for x in items])], "dcs": dcs}
+                        if dcs is not None and len(items) > 1 else items[0]
+                        for dcs, items in dcs_map.items()
+                    ]
 
-
-            if self.reduction_type == "corner":                                
-                mylist = [
-                    element for element in result 
-                    if all(dcs == 100 or dcs == 0 for dcs in element['dcs'])
-                ]
-                result = neugebauer_sort(mylist)
+                    result[:] = averaged_result
                 
-            if self.reduction_type == "full":
-                mylist = [
-                    element for element in result 
-                    if all(dcs == 100 or dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 100
-                ]
-                result = neugebauer_sort(mylist)
+                if self.doublets_remove:
+                    seen_dcs = set()
+                    removed_result = []
 
-            if self.reduction_type == "substrate":
-                mylist = [
-                    element for element in result 
-                    if all(dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 0
-                ]
-                result = neugebauer_sort(mylist)
+                    for item in result:
+                        try:
+                            dcs_key = item["dcs"]
+                            if isinstance(dcs_key, list):  # Ensure hashability
+                                dcs_key = tuple(dcs_key)
+                        except KeyError:
+                            removed_result.append(item)
+                            continue
+
+                        if dcs_key not in seen_dcs:
+                            seen_dcs.add(dcs_key)
+                            removed_result.append(item)
+
+                    # Modify result in-place using slice assignment (faster in AWS Lambda)
+                    result[:] = removed_result
+
+
+                if self.reduction_type == "corner":                                
+                    mylist = [
+                        element for element in result 
+                        if all(dcs == 100 or dcs == 0 for dcs in element['dcs'])
+                    ]
+                    result = neugebauer_sort(mylist)
+                    
+                if self.reduction_type == "full":
+                    mylist = [
+                        element for element in result 
+                        if all(dcs == 100 or dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 100
+                    ]
+                    result = neugebauer_sort(mylist)
+
+                if self.reduction_type == "substrate":
+                    mylist = [
+                        element for element in result 
+                        if all(dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 0
+                    ]
+                    result = neugebauer_sort(mylist)
+                    
+                if self.reduction_type == "primaries":
+                    mylist = [
+                        element for element in result 
+                        if sum(1 for dcs in element['dcs'] if dcs > 0) == 1
+                    ]
+                    result = linearization_sort(mylist)
                 
-            if self.reduction_type == "primaries":
-                mylist = [
-                    element for element in result 
-                    if sum(1 for dcs in element['dcs'] if dcs > 0) == 1
-                ]
-                result = linearization_sort(mylist)
-            
+                
             # if self.dst_space is all False, return only the actual list of colors
             if not any(self.dst_space.values()):
                 return result
@@ -169,5 +184,24 @@ class CgatsToJson:
             
             return result_2
 
+        except Exception as e:
+            return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
+
+
+    def _convertOnlyPCS(self):
+
+        try:
+            lines = self.cgatstext.split("\n")
+            
+            myCgats = Cgats(lines)
+            
+            pcs_values = myCgats.get_values_pcs() 
+
+            
+            if not any(self.dst_space.values()):
+                return pcs_values
+            
+            return Cs_Spectral2Multi(pcs_values, self.dst_space)
+            
         except Exception as e:
             return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
