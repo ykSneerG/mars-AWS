@@ -24,10 +24,8 @@ class CgatsConstants:
     CLR9_TPLS = ("CLR9", ['9CLR_1', '9CLR_2', '9CLR_3', '9CLR_4', '9CLR_5', '9CLR_6', '9CLR_7', '9CLR_8', '9CLR_9'])
     CLR10_TPLS = ("CLR10", ['10CLR_1', '10CLR_2', '10CLR_3', '10CLR_4', '10CLR_5', '10CLR_6', '10CLR_7', '10CLR_8', '10CLR_9', '10CLR_10'])
     CLR11_TPLS = ("CLR11", ['11CLR_1', '11CLR_2', '11CLR_3', '11CLR_4', '11CLR_5', '11CLR_6', '11CLR_7', '11CLR_8', '11CLR_9', '11CLR_10', '11CLR_11'])
-    CLR12_TPLS = ("CLR12", ['12CLR_1', '12CLR_2', '12CLR_3', '12CLR_4', '12CLR_5', '12CLR_6', '12CLR_7', '12CLR_8', '12CLR_9', '12CLR_10', '12CLR_11',
-                            '12CLR_12'])
-    CLR13_TPLS = ("CLR13", ['13CLR_1', '13CLR_2', '13CLR_3', '13CLR_4', '13CLR_5', '13CLR_6', '13CLR_7', '13CLR_8', '13CLR_9', '13CLR_10', '13CLR_11',
-                            '13CLR_12', '13CLR_13'])
+    CLR12_TPLS = ("CLR12", ['12CLR_1', '12CLR_2', '12CLR_3', '12CLR_4', '12CLR_5', '12CLR_6', '12CLR_7', '12CLR_8', '12CLR_9', '12CLR_10', '12CLR_11', '12CLR_12'])
+    CLR13_TPLS = ("CLR13", ['13CLR_1', '13CLR_2', '13CLR_3', '13CLR_4', '13CLR_5', '13CLR_6', '13CLR_7', '13CLR_8', '13CLR_9', '13CLR_10', '13CLR_11', '13CLR_12', '13CLR_13'])
 
     # PC9_1
     PC1_TPLS = ("CLR1", ['PC1_1'])
@@ -68,7 +66,7 @@ class CgatsConstants:
                 CgatsConstants.PC4_TPLS,
                 CgatsConstants.PC5_TPLS,
                 CgatsConstants.PC6_TPLS,
-                CgatsConstants.CLR7_TPLS,
+                CgatsConstants.PC7_TPLS,
                 CgatsConstants.PC8_TPLS,
                 CgatsConstants.PC9_TPLS,
                 CgatsConstants.PC10_TPLS,
@@ -126,10 +124,12 @@ class CgatsConstants:
     LGOROWLENGTH = ['LGOROWLENGTH']
     '''
     '''
+    
     ORIGINATOR = ['ORIGINATOR']
     '''
     Identifies the specific system, organization or individual that created the data file.
     '''
+    
     FILE_DESCRIPTOR = ['FILE_DESCRIPTOR', 'DESCRIPTOR']
     CREATED = ['CREATED']
     '''

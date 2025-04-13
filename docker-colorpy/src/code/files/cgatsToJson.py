@@ -56,7 +56,10 @@ class CgatsToJson:
             "LCH": params.get("inclLCH", False),
             "HEX": params.get("inclHEX", False)
         }
-
+        
+        lines = self.cgatstext.split("\n")
+        self.cgats = Cgats(lines)
+            
         self.result = self._convert()
         
 
@@ -68,41 +71,16 @@ class CgatsToJson:
     def _convert(self):
 
         try:
-            
-            # Process text data line by line
-            lines = self.cgatstext.split("\n")
-            myCgats = Cgats(lines)
-
-            # cgats_head    = myCgats.get_header()
-            # cgats_typeDCS = myCgats.get_type_dcs()
-            # cgats_typePCS = myCgats.get_type_pcs()
-            cgats_table = myCgats.row_all()
+            cgats_table = self.cgats.row_all()
 
             pcs_values = [entry.get("pcs", []) for entry in cgats_table]
             dcs_values = [entry.get("dcs", []) for entry in cgats_table]
-            
-        
-            """ pcs_values = myCgats.get_values_pcs()
-            dcs_values = myCgats.get_values_dcs()
-            
-            result = [{"dcs": dcs or [], "pcs": pcs} for dcs, pcs in zip(dcs_values, pcs_values)]                
-            """
-            
-            result = []
-
-            for i in range(len(pcs_values)):
-                res = {
-                    "dcs": dcs_values[i] or [],
-                    "pcs": pcs_values[i]
-                }
-                result.append(res)
-
+  
+            result = [{"dcs": dcs or [], "pcs": pcs} for dcs, pcs in zip(dcs_values, pcs_values)]
+                
             # check if dcs_values are all array have length greater 0
             if all(isinstance(item.get("dcs", []), list) and len(item["dcs"]) > 0 for item in result):
-            
-    
-            #result = self.data
-               
+                           
                 if self.doublets_average:
                     from collections import defaultdict
 
@@ -144,32 +122,16 @@ class CgatsToJson:
 
 
                 if self.reduction_type == "corner":                                
-                    mylist = [
-                        element for element in result 
-                        if all(dcs == 100 or dcs == 0 for dcs in element['dcs'])
-                    ]
-                    result = neugebauer_sort(mylist)
+                    result = self.extract_corner(result)
                     
                 if self.reduction_type == "full":
-                    mylist = [
-                        element for element in result 
-                        if all(dcs == 100 or dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 100
-                    ]
-                    result = neugebauer_sort(mylist)
+                    result = self.extract_full(result)
 
                 if self.reduction_type == "substrate":
-                    mylist = [
-                        element for element in result 
-                        if all(dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 0
-                    ]
-                    result = neugebauer_sort(mylist)
+                    result = self.extract_substrate(result)
                     
                 if self.reduction_type == "primaries":
-                    mylist = [
-                        element for element in result 
-                        if sum(1 for dcs in element['dcs'] if dcs > 0) == 1
-                    ]
-                    result = linearization_sort(mylist)
+                    result = self.extract_primes(result)
                 
                 
             # if self.dst_space is all False, return only the actual list of colors
@@ -191,13 +153,8 @@ class CgatsToJson:
     def _convertOnlyPCS(self):
 
         try:
-            lines = self.cgatstext.split("\n")
-            
-            myCgats = Cgats(lines)
-            
-            pcs_values = myCgats.get_values_pcs() 
+            pcs_values = self.cgats.get_values_pcs() 
 
-            
             if not any(self.dst_space.values()):
                 return pcs_values
             
@@ -205,3 +162,89 @@ class CgatsToJson:
             
         except Exception as e:
             return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
+
+
+    @staticmethod
+    def is_extractable(data) -> bool:
+        '''
+        Checks if the data is extractable
+
+        :param data: list of dictionaries with dcs and pcs values
+        '''
+
+        if not isinstance(data, list):
+            return False
+
+        return all(isinstance(item.get("dcs", []), list) and len(item["dcs"]) > 0 for item in data)
+
+    @staticmethod
+    def extract_primes(data) -> list:
+        '''
+        Extracts only the primaries from the data
+        
+        :param data: list of dictionaries with dcs and pcs values
+        '''
+
+        """ valid = CgatsToJson.is_extractable(data)
+        if not valid:
+            return data """
+        
+        mylist = [
+            element for element in data 
+            if sum(1 for dcs in element['dcs'] if dcs > 0) == 1
+        ]
+        return linearization_sort(mylist)
+    
+    @staticmethod
+    def extract_substrate(data) -> list:
+        '''
+        Extracts only the substrate from the data
+
+        :param data: list of dictionaries with dcs and pcs values
+        '''
+
+        """ valid = CgatsToJson.is_extractable(data)
+        if not valid:
+            return data """
+
+        mylist = [
+            element for element in data 
+            if all(dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 0
+        ]
+        return mylist
+    
+    @staticmethod
+    def extract_full(data) -> list:
+        '''
+        Extracts only the full colors from the data
+
+        :param data: list of dictionaries with dcs and pcs values
+        '''
+
+        """ valid = CgatsToJson.is_extractable(data)
+        if not valid:
+            return data """
+            
+        mylist = [
+            element for element in data 
+            if all(dcs == 100 or dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 100
+        ]
+        return neugebauer_sort(mylist)
+        
+    @staticmethod
+    def extract_corner(data) -> list:
+        '''
+        Extracts only the corner colors from the data
+
+        :param data: list of dictionaries with dcs and pcs values
+        '''
+
+        """ valid = CgatsToJson.is_extractable(data)
+        if not valid:
+            return data """
+
+        mylist = [
+            element for element in data 
+            if all(dcs == 100 or dcs == 0 for dcs in element['dcs'])
+        ]
+        return neugebauer_sort(mylist)
