@@ -278,7 +278,10 @@ class Predict_SynlinV4Multi_Handler(BaseLambdaHandler):
         
         # --- 2. PREDICT RAIL ---
         rails = []
-        sls: SynLinSolidV4a = SlsHelper.initClass(debug, space, preci, toler)
+        sls: SynLinSolidV4a = SlsHelper.initClass(debug, space, preci, toler) 
+        
+        if "gloss" in self.event:
+            sls.set_gloss(self.event.get("gloss"))
         
         for corner in corners:
             rail = SlsHelper.mix_all(sls, corner[0], corner[1], STEPS)

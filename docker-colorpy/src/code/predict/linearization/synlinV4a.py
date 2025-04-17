@@ -26,9 +26,15 @@ class SynLinSolidV4a(BaseLinearization):
         super().__init__(**kwargs)
         self.precision = 100
         self.space = "XYZ"
+        
+        self.gloss = [1.0] * 2
 
     def set_precision(self, value: int):
         self.precision = value
+        
+    def set_gloss(self, value):
+        self.gloss = value
+
 
     def set_space(self, value):
         if value not in ["XYZ", "LAB", "OKLAB", "CIECAM16"]:
@@ -36,14 +42,22 @@ class SynLinSolidV4a(BaseLinearization):
         self.space = value
 
     def start_Curve3D(self):
+        
+        mediaGloss = self.gloss[0]
+        solidGloss = self.gloss[1]
 
         # - + - + - + - + CHECK THE LIGHT and DARK TENDENCIES - + - + - + - + -
         media = np.array(self.media)
         solid = np.array(self.solid)
-        
+            
+            
         ksMedia = OptcolorNumpy.ksFromSnm(media)
         ksSolid = OptcolorNumpy.ksFromSnm(solid)
         
+        # - + - + - + - + CHECK THE GLOSS - + - + - + - + -
+
+        
+        # - + - + - + - + CHECK THE FLUORESCENCE - + - + - + - + -
         ksFluos = np.maximum(np.maximum(media, solid), 1)
                
         """
@@ -66,7 +80,7 @@ class SynLinSolidV4a(BaseLinearization):
             else trafo.Cs_SNM2CIECAM16 if self.space == "CIECAM16" \
             else trafo.Cs_SNM2LAB
 
-        nps_snm = OptcolorNumpy.ksMix(ksMedia, ksSolid, cMedia, cSolid, ksFluos)
+        nps_snm = OptcolorNumpy.ksMix(ksMedia, ksSolid, cMedia, cSolid, ksFluos, mediaGloss, solidGloss)
         nps = func_SNM2Target(nps_snm)
 
         ce = CurveEstimator3D()
@@ -91,7 +105,7 @@ class SynLinSolidV4a(BaseLinearization):
 
                 mid = (low + high) * 0.5  # Midpoint for binary search
                 
-                estimat_SNM[j] = OptcolorNumpy.ksMix(ksMedia, ksSolid, 1 - mid, mid, ksFluos)
+                estimat_SNM[j] = OptcolorNumpy.ksMix(ksMedia, ksSolid, 1 - mid, mid, ksFluos, mediaGloss, solidGloss)
                 tmp = func_SNM2Target(estimat_SNM[j])
                 current_POS[j] = ce.calculate_percentage(tmp)
 
@@ -109,10 +123,16 @@ class SynLinSolidV4a(BaseLinearization):
 
             est_cSolid[j] = mid  # Assign final optimized value
 
+        
+        if mediaGloss > 0 or solidGloss > 0:            
+            est_gloss = mediaGloss * (1 - np.array(est_cSolid)) + solidGloss * np.array(est_cSolid)            
+            estimat_SNM = OptcolorNumpy.add_SCI(np.array(estimat_SNM), est_gloss)
+
         color = trafo.Cs_SNM2MULTI(estimat_SNM, self.destination_types)
         
         response = {
-            "color": color
+            "color": color,
+            "gloss": self.gloss,
         }
 
         if self.debug:
@@ -149,14 +169,14 @@ class OptcolorNumpy:
         # return np.square(1 - snm) / (2 * snm)
         
         # --- OPTIMIZED CALCULATION FOR SNM TO KS COMPENSATE FLUORESCENCE ---
-        # replace all values smaller 1e-4 with 1e-3
         snm = np.where(snm < 1e-4, 1e-4, snm)
-        
+
         return np.where(
             snm > 1, 
             1e-8 / (2 * snm), 
             np.where(snm != 0, np.square(1 - snm) / (2 * snm), 1e-8)  # Handle snm == 0 safely
         )
+        
         
     @staticmethod
     def compensateFluorescence(lower: float, upper: float, value: float) -> float:
@@ -176,8 +196,6 @@ class OptcolorNumpy:
         """Computes snm from ks using vectorized NumPy operations."""
         
         # --- DEFALUT CALCULACTION FOR KS TO SNM ---
-        #return 1 + ks - np.sqrt(ks**2 + 2 * ks)
-        
         nm = (1 + ks - np.sqrt(ks**2 + 2 * ks))
         
         if np.all(ksFluos <= 1):
@@ -186,7 +204,16 @@ class OptcolorNumpy:
         # Ensure ksFluos is broadcastable with ks
         ksFluos = np.broadcast_to(ksFluos, ks.shape)
         return OptcolorNumpy.compensateFluorescence(0.75, ksFluos, nm)
-
+    
+    
+    @staticmethod
+    def add_SCI(ri: np.ndarray, glossy: np.ndarray) -> np.ndarray:
+        glossy = np.asarray(glossy)
+        if glossy.ndim < ri.ndim:
+            glossy = glossy.reshape(-1, 1)
+            
+        return ri * glossy   
+        
     @staticmethod
     def ksFulltoneInk(ksMedia: np.ndarray, ksSolid: np.ndarray) -> np.ndarray:
         """Computes full-tone ink ks."""
@@ -198,7 +225,9 @@ class OptcolorNumpy:
         ksSolid: np.ndarray, 
         cMedia: Union[float, np.ndarray], 
         cSolid: Union[float, np.ndarray],
-        ksFluos: np.ndarray
+        ksFluos: np.ndarray,
+        mediaGloss: float = 0.0,
+        solidGloss: float = 0.0
     ) -> np.ndarray:
         """
         Optimized ksMix using broadcasting.
@@ -217,5 +246,10 @@ class OptcolorNumpy:
         # Convert to snm and return with correct transposition
         #return OptcolorNumpy.ksToSnm(ksMix).T  # Shape: (M, 36)
         ksFluos = ksFluos[:, np.newaxis]  # Shape becomes (36, 1)
-        return OptcolorNumpy.ksToSnm(ksMix, ksFluos).T  # Shape: (M, 36)).T  # Shape: (M, 36)
         
+        return OptcolorNumpy.ksToSnm(ksMix, ksFluos).T
+        if mediaGloss <= 0 and solidGloss <= 0:
+            return OptcolorNumpy.ksToSnm(ksMix, ksFluos).T  # Shape: (M, 36)
+        else:
+            #return OptcolorNumpy.ksToSnm_addSCI(ksMix, ksFluos, mediaGloss * cMedia + solidGloss * cSolid).T
+            return OptcolorNumpy.ksToSnm_addSCI(ksMix, ksFluos, mediaGloss).T
