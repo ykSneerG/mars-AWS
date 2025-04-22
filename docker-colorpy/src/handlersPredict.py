@@ -169,9 +169,10 @@ class SlsHelper:
         snm = res["color"][0]["snm"]
 
         if darken > 0.0:
-            result = ColorTrafoNumpy().Cs_SNM2LAB(np.array(snm)).tolist()
+            """ result = ColorTrafoNumpy().Cs_SNM2LAB(np.array(snm)).tolist()
             l_normalized = result[0] / 100
-            factor = (1 - l_normalized) ** (darken)
+            factor = (1 - l_normalized) ** (darken) """
+            factor = 1 - darken
             snm = [factor * item for item in snm]
 
         return snm
