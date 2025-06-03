@@ -11,7 +11,7 @@ def neugebauer_sort(colors):
 
     # Sort by color weight first, then by primary color values in the order: C > M > Y > K
     def sort_key(color):
-        dcs = color['dcs']
+        dcs = color["dcs"]
         weight = color_weight(dcs)
         return (weight, [-val for val in dcs])  # Negative to sort descending
 
@@ -20,6 +20,7 @@ def neugebauer_sort(colors):
 
     return colors
 
+
 def linearization_sort(colors):
     # Sort by color weight first, then by primary color values in the order: C > M > Y > K
     # starting with the first column ascending, than the second column asc, etc.
@@ -27,11 +28,13 @@ def linearization_sort(colors):
     # Second [0,1,0,0], [0,2,0,0], [0,3,0,0],
     # Third [0,0,1,0], [0,0,2,0], [0,0,3,0],
     # ...[0,0,0,1], [0,0,0,2], [0,0,0,3]
-    
+
     def sort_key(color):
-        dcs = color['dcs']
+        dcs = color["dcs"]
         # Find the first nonzero index (which determines the primary component)
-        first_nonzero_index = next((i for i, val in enumerate(dcs) if val > 0), len(dcs))
+        first_nonzero_index = next(
+            (i for i, val in enumerate(dcs) if val > 0), len(dcs)
+        )
         # Sorting key: (first nonzero index, actual dcs values in ascending order)
         return (first_nonzero_index, *dcs)
 
@@ -42,32 +45,33 @@ def linearization_sort(colors):
 
 
 class CgatsToJson:
-    
+
     def __init__(self, params):
-        
+
         self.cgatstext: str = params.get("txt", "")
         self.doublets_average = params.get("doublets_average", False)
         self.doublets_remove = params.get("doublets_remove", False)
         self.reduction_type = params.get("reduction_type", None)
-        
+
+        self.dst_dcs = params.get("dst_dcs", self.DCS_CMYK_48)
+
         self.dst_space = {
             "XYZ": params.get("inclXYZ", False),
             "LAB": params.get("inclLAB", False),
             "LCH": params.get("inclLCH", False),
-            "HEX": params.get("inclHEX", False)
+            "HEX": params.get("inclHEX", False),
         }
-        
+
         lines = self.cgatstext.split("\n")
         self.cgats = Cgats(lines)
-            
+
+        self.entries = []
         self.result = self._convert()
-        
 
     @property
     def get_result(self):
         return self.result
-    
-    
+
     def _convert(self):
 
         try:
@@ -75,12 +79,19 @@ class CgatsToJson:
 
             pcs_values = [entry.get("pcs", []) for entry in cgats_table]
             dcs_values = [entry.get("dcs", []) for entry in cgats_table]
-  
-            result = [{"dcs": dcs or [], "pcs": pcs} for dcs, pcs in zip(dcs_values, pcs_values)]
-                
+
+            result = [
+                {"dcs": dcs or [], "pcs": pcs}
+                for dcs, pcs in zip(dcs_values, pcs_values)
+            ]
+            self.entries = result
+
             # check if dcs_values are all array have length greater 0
-            if all(isinstance(item.get("dcs", []), list) and len(item["dcs"]) > 0 for item in result):
-                           
+            if all(
+                isinstance(item.get("dcs", []), list) and len(item["dcs"]) > 0
+                for item in result
+            ):
+
                 if self.doublets_average:
                     from collections import defaultdict
 
@@ -88,18 +99,29 @@ class CgatsToJson:
 
                     for item in result:
                         dcs_key = item.get("dcs")
-                        if isinstance(dcs_key, list):  
-                            dcs_key = tuple(dcs_key)  # Convert lists to tuples for hashing
+                        if isinstance(dcs_key, list):
+                            dcs_key = tuple(
+                                dcs_key
+                            )  # Convert lists to tuples for hashing
                         dcs_map[dcs_key].append(item)
 
                     averaged_result = [
-                        {"pcs": [sum(values) / len(values) for values in zip(*[x["pcs"] for x in items])], "dcs": dcs}
-                        if dcs is not None and len(items) > 1 else items[0]
+                        (
+                            {
+                                "pcs": [
+                                    sum(values) / len(values)
+                                    for values in zip(*[x["pcs"] for x in items])
+                                ],
+                                "dcs": dcs,
+                            }
+                            if dcs is not None and len(items) > 1
+                            else items[0]
+                        )
                         for dcs, items in dcs_map.items()
                     ]
 
                     result[:] = averaged_result
-                
+
                 if self.doublets_remove:
                     seen_dcs = set()
                     removed_result = []
@@ -120,131 +142,472 @@ class CgatsToJson:
                     # Modify result in-place using slice assignment (faster in AWS Lambda)
                     result[:] = removed_result
 
-
-                if self.reduction_type == "corner":                                
+                if self.reduction_type == "corner":
                     result = self.extract_corner(result)
-                    
+
                 if self.reduction_type == "full":
                     result = self.extract_full(result)
 
                 if self.reduction_type == "substrate":
                     result = self.extract_substrate(result)
-                    
+
                 if self.reduction_type == "primaries":
                     result = self.extract_primes(result)
-                
-                
+
+                if self.reduction_type == "closest":
+                    result = self.extract_closestDCS(result, self.dst_dcs)
+
             # if self.dst_space is all False, return only the actual list of colors
-            if not any(self.dst_space.values()):
+            '''if not any(self.dst_space.values()):
                 return result
-            
+
             spectrals = [item["pcs"] for item in result]
             result_2 = Cs_Spectral2Multi(spectrals, self.dst_space)
-            
+
             for i in range(len(result)):
-                result_2[i]["dcs"] = result[i]["dcs"]
-            
-            return result_2
+                result_2[i]["dcs"] = result[i]["dcs"
+
+            return result_2'''
+            return self.convertSpace(result, self.dst_space)
 
         except Exception as e:
             return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
 
+    @staticmethod
+    def convertSpace(result, dst_space):
+        # if self.dst_space is all False, return only the actual list of colors
+        if not any(dst_space.values()):
+            return result
 
-    def _convertOnlyPCS(self):
+        spectrals = [item["pcs"] for item in result]
+        result_2 = Cs_Spectral2Multi(spectrals, dst_space)
+
+        for i in range(len(result)):
+            result_2[i]["dcs"] = result[i]["dcs"]
+
+        return result_2
+
+
+    '''def _convertOnlyPCS(self):
 
         try:
-            pcs_values = self.cgats.get_values_pcs() 
+            pcs_values = self.cgats.get_values_pcs()
 
             if not any(self.dst_space.values()):
                 return pcs_values
-            
-            return Cs_Spectral2Multi(pcs_values, self.dst_space)
-            
-        except Exception as e:
-            return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
 
+            return Cs_Spectral2Multi(pcs_values, self.dst_space)
+
+        except Exception as e:
+            return {"statusCode": 500, "body": json.dumps({"error": str(e)})}'''
 
     @staticmethod
     def is_extractable(data) -> bool:
-        '''
+        """
         Checks if the data is extractable
 
         :param data: list of dictionaries with dcs and pcs values
-        '''
+        """
 
         if not isinstance(data, list):
             return False
 
-        return all(isinstance(item.get("dcs", []), list) and len(item["dcs"]) > 0 for item in data)
+        return all(
+            isinstance(item.get("dcs", []), list) and len(item["dcs"]) > 0
+            for item in data
+        )
 
     @staticmethod
     def extract_primes(data) -> list:
-        '''
+        """
         Extracts only the primaries from the data
-        
+
         :param data: list of dictionaries with dcs and pcs values
-        '''
+        """
 
         """ valid = CgatsToJson.is_extractable(data)
         if not valid:
             return data """
-        
+
         mylist = [
-            element for element in data 
-            if sum(1 for dcs in element['dcs'] if dcs > 0) == 1
+            element
+            for element in data
+            if sum(1 for dcs in element["dcs"] if dcs > 0) == 1
         ]
         return linearization_sort(mylist)
-    
+
     @staticmethod
     def extract_substrate(data) -> list:
-        '''
+        """
         Extracts only the substrate from the data
 
         :param data: list of dictionaries with dcs and pcs values
-        '''
+        """
 
         """ valid = CgatsToJson.is_extractable(data)
         if not valid:
             return data """
 
         mylist = [
-            element for element in data 
-            if all(dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 0
+            element
+            for element in data
+            if all(dcs == 0 for dcs in element["dcs"]) and sum(element["dcs"]) == 0
         ]
         return mylist
-    
+
     @staticmethod
     def extract_full(data) -> list:
-        '''
+        """
         Extracts only the full colors from the data
 
         :param data: list of dictionaries with dcs and pcs values
-        '''
+        """
 
         """ valid = CgatsToJson.is_extractable(data)
         if not valid:
             return data """
-            
+
         mylist = [
-            element for element in data 
-            if all(dcs == 100 or dcs == 0 for dcs in element['dcs']) and sum(element['dcs']) == 100
+            element
+            for element in data
+            if all(dcs == 100 or dcs == 0 for dcs in element["dcs"])
+            and sum(element["dcs"]) == 100
         ]
         return neugebauer_sort(mylist)
-        
+
     @staticmethod
     def extract_corner(data) -> list:
-        '''
+        """
         Extracts only the corner colors from the data
 
         :param data: list of dictionaries with dcs and pcs values
-        '''
+        """
 
         """ valid = CgatsToJson.is_extractable(data)
         if not valid:
             return data """
 
         mylist = [
-            element for element in data 
-            if all(dcs == 100 or dcs == 0 for dcs in element['dcs'])
+            element
+            for element in data
+            if all(dcs == 100 or dcs == 0 for dcs in element["dcs"])
         ]
         return neugebauer_sort(mylist)
+
+    @staticmethod
+    def extract_closestDCS(data: list, dcs: list) -> list:
+        """
+        Extracts the closest color to the given dcs from the data
+
+        :param data: list of dictionaries with dcs and pcs values
+        :param dcs: list of dcs values to find the closest color
+        """
+
+        """ valid = CgatsToJson.is_extractable(data)
+        if not valid:
+            return data """
+
+        def distance(dcs1, dcs2):
+            return sum((a - b) ** 2 for a, b in zip(dcs1, dcs2)) ** 0.5
+
+        """closest_color = min(data, key=lambda x: distance(x['dcs'], dcs))
+        return closest_color"""
+        closest_colors = []
+        for target_dcs in dcs:
+            closest_color = min(data, key=lambda x: distance(x["dcs"], target_dcs))
+            closest_colors.append(closest_color)
+
+        return closest_colors
+
+
+    DCS_CMYK_48 = [
+        [0, 0, 0, 0],
+        [33, 0, 0, 0],
+        [66, 0, 0, 0],
+        [100, 0, 0, 0],
+        [0, 33, 0, 0],
+        [0, 66, 0, 0],
+        [0, 100, 0, 0],
+        [0, 0, 33, 0],
+        [0, 0, 66, 0],
+        [0, 0, 100, 0],
+        [0, 0, 0, 33],
+        [0, 0, 0, 66],
+        [0, 0, 0, 100],
+        [33, 33, 0, 0],
+        [66, 66, 0, 0],
+        [100, 100, 0, 0],
+        [0, 33, 33, 0],
+        [0, 66, 66, 0],
+        [0, 100, 100, 0],
+        [33, 0, 33, 0],
+        [66, 0, 66, 0],
+        [100, 0, 100, 0],
+        [100, 33, 0, 0],
+        [100, 66, 0, 0],
+        [0, 100, 33, 0],
+        [0, 100, 66, 0],
+        [100, 0, 33, 0],
+        [100, 0, 66, 0],
+        [33, 100, 0, 0],
+        [66, 100, 0, 0],
+        [0, 33, 100, 0],
+        [0, 66, 100, 0],
+        [33, 0, 100, 0],
+        [66, 0, 100, 0],
+        [50, 0, 0, 33],
+        [100, 0, 0, 33],
+        [0, 50, 0, 33],
+        [0, 100, 0, 33],
+        [0, 0, 50, 33],
+        [0, 0, 100, 33],
+        [50, 50, 0, 33],
+        [100, 100, 0, 33],
+        [0, 50, 50, 33],
+        [0, 100, 100, 33],
+        [50, 0, 50, 33],
+        [100, 0, 100, 33],
+        [100, 50, 0, 33],
+        [0, 100, 50, 33],
+        [100, 0, 50, 33],
+        [50, 100, 0, 33],
+        [0, 50, 100, 33],
+        [50, 0, 100, 33],
+        
+        [50, 0, 0, 66],
+        [100, 0, 0, 66],
+        [0, 50, 0, 66],
+        [0, 100, 0, 66],
+        [0, 0, 50, 66],
+        [0, 0, 100, 66],
+        [50, 50, 0, 66],
+        [100, 100, 0, 66],
+        [0, 50, 50, 66],
+        [0, 100, 100, 66],
+        [50, 0, 50, 66],
+        [100, 0, 100, 66],
+        [100, 50, 0, 66],
+        [0, 100, 50, 66],
+        [100, 0, 50, 66],
+        [50, 100, 0, 66],
+        [0, 50, 100, 66],
+        [50, 0, 100, 66],
+        
+        [100, 0, 0, 100],
+        [0, 100, 0, 100],
+        [0, 0, 100, 100],
+        
+        [100, 100, 100, 0],
+        [100, 100, 0, 100],
+        [100, 0, 100, 100],
+        [0, 100, 100, 100],
+        
+        [100, 100, 100, 100]
+    ]
+    
+    DCS_CMYK_88 = [
+        [0, 0, 0, 0],
+        [33, 0, 0, 0],
+        [66, 0, 0, 0],
+        [100, 0, 0, 0],
+        [0, 33, 0, 0],
+        [0, 66, 0, 0],
+        [0, 100, 0, 0],
+        [0, 0, 33, 0],
+        [0, 0, 66, 0],
+        [0, 0, 100, 0],
+        [0, 0, 0, 33],
+        [0, 0, 0, 66],
+        [0, 0, 0, 100],
+        [33, 33, 0, 0],
+        [66, 66, 0, 0],
+        [100, 100, 0, 0],
+        [0, 33, 33, 0],
+        [0, 66, 66, 0],
+        [0, 100, 100, 0],
+        [33, 0, 33, 0],
+        [66, 0, 66, 0],
+        [100, 0, 100, 0],
+        [100, 33, 0, 0],
+        [100, 66, 0, 0],
+        [0, 100, 33, 0],
+        [0, 100, 66, 0],
+        [100, 0, 33, 0],
+        [100, 0, 66, 0],
+        [33, 100, 0, 0],
+        [66, 100, 0, 0],
+        [0, 33, 100, 0],
+        [0, 66, 100, 0],
+        [33, 0, 100, 0],
+        [66, 0, 100, 0],
+        [50, 0, 0, 33],
+        [100, 0, 0, 33],
+        [0, 50, 0, 33],
+        [0, 100, 0, 33],
+        [0, 0, 50, 33],
+        [0, 0, 100, 33],
+        [50, 50, 0, 33],
+        [100, 100, 0, 33],
+        [0, 50, 50, 33],
+        [0, 100, 100, 33],
+        [50, 0, 50, 33],
+        [100, 0, 100, 33],
+        [100, 50, 0, 33],
+        [0, 100, 50, 33],
+        [100, 0, 50, 33],
+        [50, 100, 0, 33],
+        [0, 50, 100, 33],
+        [50, 0, 100, 33],
+        
+        [50, 0, 0, 66],
+        [100, 0, 0, 66],
+        [0, 50, 0, 66],
+        [0, 100, 0, 66],
+        [0, 0, 50, 66],
+        [0, 0, 100, 66],
+        [50, 50, 0, 66],
+        [100, 100, 0, 66],
+        [0, 50, 50, 66],
+        [0, 100, 100, 66],
+        [50, 0, 50, 66],
+        [100, 0, 100, 66],
+        [100, 50, 0, 66],
+        [0, 100, 50, 66],
+        [100, 0, 50, 66],
+        [50, 100, 0, 66],
+        [0, 50, 100, 66],
+        [50, 0, 100, 66],
+        
+        [100, 0, 0, 100],
+        [0, 100, 0, 100],
+        [0, 0, 100, 100],
+        [100, 100, 100, 0],
+        [100, 100, 0, 100],
+        [100, 0, 100, 100],
+        [0, 100, 100, 100],
+        [100, 100, 100, 100]
+    ]
+    
+    DCS_CMYK_66 = [
+        [0, 0, 0, 0],
+        [33, 0, 0, 0],
+        [66, 0, 0, 0],
+        [100, 0, 0, 0],
+        [0, 33, 0, 0],
+        [0, 66, 0, 0],
+        [0, 100, 0, 0],
+        [0, 0, 33, 0],
+        [0, 0, 66, 0],
+        [0, 0, 100, 0],
+        [0, 0, 0, 33],
+        [0, 0, 0, 66],
+        [0, 0, 0, 100],
+        [33, 33, 0, 0],
+        [66, 66, 0, 0],
+        [100, 100, 0, 0],
+        [0, 33, 33, 0],
+        [0, 66, 66, 0],
+        [0, 100, 100, 0],
+        [33, 0, 33, 0],
+        [66, 0, 66, 0],
+        [100, 0, 100, 0],
+        [100, 33, 0, 0],
+        [100, 66, 0, 0],
+        [0, 100, 33, 0],
+        [0, 100, 66, 0],
+        [100, 0, 33, 0],
+        [100, 0, 66, 0],
+        [33, 100, 0, 0],
+        [66, 100, 0, 0],
+        [0, 33, 100, 0],
+        [0, 66, 100, 0],
+        [33, 0, 100, 0],
+        [66, 0, 100, 0],
+        [50, 0, 0, 33],
+        [100, 0, 0, 33],
+        [0, 50, 0, 33],
+        [0, 100, 0, 33],
+        [0, 0, 50, 33],
+        [0, 0, 100, 33],
+        [50, 50, 0, 33],
+        [100, 100, 0, 33],
+        [0, 50, 50, 33],
+        [0, 100, 100, 33],
+        [50, 0, 50, 33],
+        [100, 0, 100, 33],
+        [100, 50, 0, 33],
+        [0, 100, 50, 33],
+        [100, 0, 50, 33],
+        [50, 100, 0, 33],
+        [0, 50, 100, 33],
+        [50, 0, 100, 33],
+        [100, 0, 0, 66],
+        [0, 100, 0, 66],
+        [0, 0, 100, 66],
+        [100, 100, 0, 66],
+        [0, 100, 100, 66],
+        [100, 0, 100, 66], 
+        [100, 0, 0, 100],
+        [0, 100, 0, 100],
+        [0, 0, 100, 100],
+        [100, 100, 100, 0],
+        [100, 100, 0, 100],
+        [100, 0, 100, 100],
+        [0, 100, 100, 100],
+        [100, 100, 100, 100]
+    ]
+
+    DCS_CMYK_48a = [
+        [0, 0, 0, 0],
+        [33, 0, 0, 0],
+        [66, 0, 0, 0],
+        [100, 0, 0, 0],
+        [0, 33, 0, 0],
+        [0, 66, 0, 0],
+        [0, 100, 0, 0],
+        [0, 0, 33, 0],
+        [0, 0, 66, 0],
+        [0, 0, 100, 0],
+        [0, 0, 0, 33],
+        [0, 0, 0, 66],
+        [0, 0, 0, 100],
+        [33, 33, 0, 0],
+        [66, 66, 0, 0],
+        [100, 100, 0, 0],
+        [0, 33, 33, 0],
+        [0, 66, 66, 0],
+        [0, 100, 100, 0],
+        [33, 0, 33, 0],
+        [66, 0, 66, 0],
+        [100, 0, 100, 0],
+        [100, 33, 0, 0],
+        [100, 66, 0, 0],
+        [0, 100, 33, 0],
+        [0, 100, 66, 0],
+        [100, 0, 33, 0],
+        [100, 0, 66, 0],
+        [33, 100, 0, 0],
+        [66, 100, 0, 0],
+        [0, 33, 100, 0],
+        [0, 66, 100, 0],
+        [33, 0, 100, 0],
+        [66, 0, 100, 0],
+        [50, 0, 0, 33],
+        [100, 0, 0, 33],
+        [0, 50, 0, 33],
+        [0, 100, 0, 33],
+        [0, 0, 50, 33],
+        [0, 0, 100, 33],
+        [50, 50, 0, 33],
+        [100, 100, 0, 33],
+        [0, 50, 50, 33],
+        [0, 100, 100, 33],
+        [50, 0, 50, 33],
+        [100, 0, 100, 33],
+        [100, 50, 0, 33],
+        [0, 100, 50, 33],
+        [100, 0, 50, 33],
+        [50, 100, 0, 33],
+        [0, 50, 100, 33],
+        [50, 0, 100, 33],
+    ]

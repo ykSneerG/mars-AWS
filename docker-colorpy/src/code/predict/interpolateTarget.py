@@ -9,19 +9,33 @@ class BaseInterpolation:
         self.src_dcs = None  # Device color space (e.g., CMYK, RGB)
         self.src_pcs = None  # Spectral reflectance values
 
-    def set_src_dcs(self, dcs_data):
+    def set_src_dcs(self, data):
         """Set device color space data (e.g., CMYK, RGB)."""
-        self.src_dcs = np.array(dcs_data)
+        self.src_dcs = np.asarray(data, dtype=np.float32)
+        
+        if self.src_dcs.ndim != 2:
+            raise ValueError("dcs_data must be a 2D array of shape (n_samples, n_features)")
 
-    def set_src_spectra(self, spectral_data):
+    def set_src_pcs(self, data):
         """Set spectral reflectance data."""
-        self.src_pcs = np.array(spectral_data)
+        self.src_pcs = np.asarray(data, dtype=np.float32)
+        
+        if self.src_pcs.ndim != 2:
+            raise ValueError("pcs_data must be a 2D array of shape (n_samples, n_wavelengths)")
+        
+        # Set negative values to a small positive number
+        if np.any(self.src_pcs < 0):
+            self.src_pcs[self.src_pcs < 0] = 1e-8  
 
-# --#-#-- INTERPOLATION scipy.interpolate.RbRBFInterpolator --#-#-- INTERPOLATION scipy.interpolate.RbRBFInterpolator --#-#--
+
+# --#-#-- INTERPOLATION scipy.interpolate.RbRBFInterpolator --#-#--
  
 class ModernRBFkernel(Enum):
     """ 
-    #supported in SKIPY 1.15.2 scipy.interpolate.RBFInterpolator
+    **ModernRBFkernel**
+    
+    supported in SKIPY 1.15.2 scipy.interpolate.RBFInterpolator
+    
     ’linear’ : -r
     ‘thin_plate_spline’ : r**2 * log(r)
     ‘cubic’ : r**3
@@ -32,40 +46,63 @@ class ModernRBFkernel(Enum):
     ‘gaussian’ : exp(-r**2)
     """
     
-    MULTIQUADRATIC = 'multiquadric'
+    LINEAR = 'linear'
     THINPLATESPLINE = 'thin_plate_spline'
+    CUBIC = 'cubic'
+    QUINTIC = 'quintic'
+    MULTIQUADRATIC = 'multiquadric'
+    INVERS_MULTIQUADRATIC = 'inverse_multiquadric'
+    INVERS_QUADRATIC = 'inverse_quadratic'
+    GAUSSIAN = 'gaussian'
     
  
-class ModernRBFInterpolator:
+class ModernRBFInterpolator(BaseInterpolation):
     
     def __init__(self):
-        self.src_dcs = None
-        self.src_pcs = None
+        super().__init__()
+        """ self.src_dcs = None
+        self.src_pcs = None """
         self.rbf_interpolator = None
         self.epsilon = None
         self.smoothing = 1e-8
         self.kernel = ModernRBFkernel.MULTIQUADRATIC.value
+        self.degree = 4  # Default degree for polynomial fitting, can be adjusted
 
+    """ 
     def set_src_dcs(self, dcs_data):
-        """Set input device color data with validation."""
+        #Set input device color data with validation.
         self.src_dcs = np.asarray(dcs_data, dtype=np.float32)
         if self.src_dcs.ndim != 2:
             raise ValueError("dcs_data must be a 2D array of shape (n_samples, n_features)")
 
-    def set_src_spectra(self, spectral_data):
-        """Set output spectral data with physics-aware validation."""
+    def set_src_pcs(self, spectral_data):
+        #Set output spectral data with physics-aware validation.
         self.src_pcs = np.asarray(spectral_data, dtype=np.float32)
         if self.src_pcs.ndim != 2:
             raise ValueError("spectral_data must be a 2D array of shape (n_samples, n_wavelengths)")
         if np.any(self.src_pcs < 0):
-            raise ValueError("Spectral data contains negative values - physically impossible")
-        
+            #raise ValueError("Spectral data contains negative values - physically impossible")
+            self.src_pcs[self.src_pcs < 0] = 1e-8  # Set negative values to a small positive number
+    """
+    
     def set_smoothness(self, smoothing):
         """Set regularization parameter for RBF smoothing."""
         if smoothing <= 0:
             raise ValueError("Smoothing parameter must be positive")
         self.smoothing = smoothing
         
+    def set_degree(self, degree):
+        """Set polynomial degree for RBF interpolation."""
+        if degree < 0:
+            raise ValueError("Degree must be non-negative")
+        self.degree = degree
+
+    def set_epsilon(self, epsilon):
+        """Set epsilon for RBF interpolation."""
+        if epsilon <= 0:
+            raise ValueError("Epsilon must be positive")
+        self.epsilon = epsilon
+
     def set_kernel(self, kernel):
         """Set RBF kernel type."""
         try:
@@ -91,12 +128,12 @@ class ModernRBFInterpolator:
                 kernel=self.kernel,
                 epsilon=self.epsilon,
                 smoothing=self.smoothing,
-                degree=4
+                degree=self.degree
             )
         except ValueError as e:
             raise RuntimeError(f"RBF interpolation failed: {str(e)}") from e
 
-    def interpolate_spectral_data(self, new_color_values):
+    def interpolate(self, new_color_values) -> np.ndarray:
         """Batched interpolation for new color values."""
         if self.rbf_interpolator is None:
             raise ValueError("Call precompute_interpolator() first")
@@ -169,6 +206,7 @@ class FilterMahalanobis:
         
         return distances, threshold, outliers, filtered_dcs, filtered_pcs
 
+
 # import numpy as np # type: ignore
 from scipy.signal import savgol_filter # type: ignore  # for Savitzky-Golay smoothing
 
@@ -217,7 +255,6 @@ class SavitzkyGolaySmoothing:
 
 
 # --- NEW --- NEW --- NEW --- NEW --- NEW --- NEW --- NEW --- NEW --- NEW --- NEW --- NEW --- NEW --- NEW --- NEW --- NEW ---
-
 
 class ModernCubicHermeticSplineInterpolator:
     
@@ -301,82 +338,6 @@ class ModernCubicHermeticSplineInterpolator:
         interpolated_spectra = np.array([spline(x_query) for spline in self.interpolators]).T
         return interpolated_spectra
 
-
-class ModernCubicHermeticSplineInterpolator_OLD:
-    
-    def __init__(self):
-        self.src_dcs = None
-        self.src_pcs = None
-        self.interpolator = None
-
-    def set_src_dcs(self, dcs_data):
-        """Set input device color data with validation."""
-        self.src_dcs = np.asarray(dcs_data, dtype=np.float32)
-        if self.src_dcs.ndim != 2:
-            raise ValueError("dcs_data must be a 2D array of shape (n_samples, n_features)")
-
-    def set_src_spectra(self, spectral_data):
-        """Set output spectral data with physics-aware validation."""
-        self.src_pcs = np.asarray(spectral_data, dtype=np.float32)
-        if self.src_pcs.ndim != 2:
-            raise ValueError("spectral_data must be a 2D array of shape (n_samples, n_wavelengths)")
-        if np.any(self.src_pcs < 0):
-            raise ValueError("Spectral data contains negative values - physically impossible")
-        
-    def estimate_derivatives(self, dcs: np.ndarray, pcs: np.ndarray) -> np.ndarray:
-        """
-        Estimate first derivatives for each spectral dimension while considering CMYK (DCS).
-        
-        :param dcs: 2D array of shape (num_samples, num_CMYK_channels)
-        :param pcs: 2D array of shape (num_samples, num_spectral_bands)
-        :return: 2D array of estimated derivatives (same shape as pcs)
-        """
-        num_samples = dcs.shape[0]  # Number of CMYK combinations
-        dydx = np.zeros_like(pcs)
-
-        # Compute distance metric for non-uniform CMYK spacing
-        distances = np.linalg.norm(dcs[1:] - dcs[:-1], axis=1)
-        
-        # Forward difference for the first point
-        dydx[0, :] = (pcs[1, :] - pcs[0, :]) / distances[0]
-
-        # Central difference for middle points
-        for i in range(1, num_samples - 1):
-            left_dist = np.linalg.norm(dcs[i] - dcs[i - 1])
-            right_dist = np.linalg.norm(dcs[i + 1] - dcs[i])
-            dydx[i, :] = (pcs[i + 1, :] - pcs[i - 1, :]) / (left_dist + right_dist)
-
-        # Backward difference for the last point
-        dydx[-1, :] = (pcs[-1, :] - pcs[-2, :]) / distances[-1]
-
-        return dydx
-
-
-    def precompute_interpolator(self):
-        """Create piecewise cubic Hermite spline interpolator."""
-        
-        dydx = self.estimate_derivatives(self.src_dcs, self.src_pcs)  # Compute derivatives
-        
-        try:
-            self.interpolator = CubicHermiteSpline(
-                self.src_dcs, 
-                self.src_pcs, 
-                dydx)
-            
-        except ValueError as e:
-            raise RuntimeError(f"Precompute Interpolation failed: {str(e)}") from e
-
-    def interpolate_spectral_data(self, new_color_values):
-        """Batched interpolation for new color values."""
-        if self.interpolator is None:
-            raise ValueError("Call precompute_interpolator() first")
-            
-        new_color_values = np.asarray(new_color_values, dtype=np.float32)
-        if new_color_values.ndim != 2:
-            raise ValueError("Input must be 2D array of shape (n_points, n_features)")
-        
-        return self.interpolator(new_color_values)
- 
 
 
 # ============================== DELETE BELOW ==============================
@@ -493,3 +454,78 @@ class OptimizedRBFInterpolator3:
         
         # Matrix multiply for all wavelengths simultaneously
         return phi_new @ self.weights
+
+class ModernCubicHermeticSplineInterpolator_OLD:
+    
+    def __init__(self):
+        self.src_dcs = None
+        self.src_pcs = None
+        self.interpolator = None
+
+    def set_src_dcs(self, dcs_data):
+        """Set input device color data with validation."""
+        self.src_dcs = np.asarray(dcs_data, dtype=np.float32)
+        if self.src_dcs.ndim != 2:
+            raise ValueError("dcs_data must be a 2D array of shape (n_samples, n_features)")
+
+    def set_src_spectra(self, spectral_data):
+        """Set output spectral data with physics-aware validation."""
+        self.src_pcs = np.asarray(spectral_data, dtype=np.float32)
+        if self.src_pcs.ndim != 2:
+            raise ValueError("spectral_data must be a 2D array of shape (n_samples, n_wavelengths)")
+        if np.any(self.src_pcs < 0):
+            raise ValueError("Spectral data contains negative values - physically impossible")
+        
+    def estimate_derivatives(self, dcs: np.ndarray, pcs: np.ndarray) -> np.ndarray:
+        """
+        Estimate first derivatives for each spectral dimension while considering CMYK (DCS).
+        
+        :param dcs: 2D array of shape (num_samples, num_CMYK_channels)
+        :param pcs: 2D array of shape (num_samples, num_spectral_bands)
+        :return: 2D array of estimated derivatives (same shape as pcs)
+        """
+        num_samples = dcs.shape[0]  # Number of CMYK combinations
+        dydx = np.zeros_like(pcs)
+
+        # Compute distance metric for non-uniform CMYK spacing
+        distances = np.linalg.norm(dcs[1:] - dcs[:-1], axis=1)
+        
+        # Forward difference for the first point
+        dydx[0, :] = (pcs[1, :] - pcs[0, :]) / distances[0]
+
+        # Central difference for middle points
+        for i in range(1, num_samples - 1):
+            left_dist = np.linalg.norm(dcs[i] - dcs[i - 1])
+            right_dist = np.linalg.norm(dcs[i + 1] - dcs[i])
+            dydx[i, :] = (pcs[i + 1, :] - pcs[i - 1, :]) / (left_dist + right_dist)
+
+        # Backward difference for the last point
+        dydx[-1, :] = (pcs[-1, :] - pcs[-2, :]) / distances[-1]
+
+        return dydx
+
+
+    def precompute_interpolator(self):
+        """Create piecewise cubic Hermite spline interpolator."""
+        
+        dydx = self.estimate_derivatives(self.src_dcs, self.src_pcs)  # Compute derivatives
+        
+        try:
+            self.interpolator = CubicHermiteSpline(
+                self.src_dcs, 
+                self.src_pcs, 
+                dydx)
+            
+        except ValueError as e:
+            raise RuntimeError(f"Precompute Interpolation failed: {str(e)}") from e
+
+    def interpolate_spectral_data(self, new_color_values):
+        """Batched interpolation for new color values."""
+        if self.interpolator is None:
+            raise ValueError("Call precompute_interpolator() first")
+            
+        new_color_values = np.asarray(new_color_values, dtype=np.float32)
+        if new_color_values.ndim != 2:
+            raise ValueError("Input must be 2D array of shape (n_points, n_features)")
+        
+        return self.interpolator(new_color_values)

@@ -294,3 +294,69 @@ class ColorTrafoNumpy:
             }} if incl.get("LCH") else {}),
             **({"hex": hex[i]} if incl.get("HEX") else {})
         } for i, row in enumerate(spectral)]
+
+
+    def Cs_SNM2MULTI_NP(self, values, incl_dst_values: dict = None) -> list:
+
+        # return values.tolist()
+
+        # Ensure input is a numpy array of float32
+        # Filter out any non-numeric (e.g., dict) entries
+        if isinstance(values, np.ndarray):
+            spectral = values
+        else:
+            # Only keep rows that are list/tuple/np.ndarray of numbers
+            filtered = []
+            for v in values:
+                if isinstance(v, (list, tuple, np.ndarray)) and all(isinstance(x, (int, float, np.integer, np.floating)) for x in v):
+                    filtered.append(v)
+            spectral = np.asarray(filtered, dtype=np.float32)
+        if spectral.ndim == 1:
+            spectral = spectral[np.newaxis, :]
+        
+        incl = incl_dst_values or {}
+        
+        # Precompute all conversions first
+        xyz = lab = lch = hex = None
+        rounded_lch = None
+        
+        if any(incl.get(k, False) for k in ["XYZ", "LAB", "LCH", "HEX"]):
+            xyz = self.CS_SNM2XYZ(spectral)
+            
+            if incl.get("HEX", False):
+                rgb = self.Cs_XYZ2RGB(xyz)
+                hex = np.apply_along_axis(
+                    lambda x: f"#{int(x[0]):02X}{int(x[1]):02X}{int(x[2]):02X}", 
+                    1, 
+                    np.clip(rgb, 0, 255).astype(np.uint8)
+                )
+                
+            if incl.get("LAB", False) or incl.get("LCH", False):
+                lab = self.Cs_XYZ2LAB(xyz)
+                
+                if incl.get("LCH", False):
+                    lch = self.Cs_LAB2LCH(lab)
+                    rounded_lch = np.round(lch, 2)
+        
+        
+        
+        # Build results
+        results = []
+        for i, row in enumerate(spectral):
+            entry = {
+                "snm": [round(float(num), 4) for num in row]
+            }
+            if incl.get("XYZ"):
+                entry["xyz"] = np.round(xyz[i], 2).tolist()
+            if incl.get("LAB"):
+                entry["lab"] = np.round(lab[i], 2).tolist()
+            if incl.get("LCH"):
+                entry["lch"] = {
+                    "L": round(float(rounded_lch[i, 0]), 2),
+                    "C": round(float(rounded_lch[i, 1]), 2),
+                    "H": round(float(rounded_lch[i, 2]), 2)
+                }
+            if incl.get("HEX"):
+                entry["hex"] = hex[i]
+            results.append(entry)
+        return results

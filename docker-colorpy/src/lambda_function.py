@@ -120,6 +120,17 @@ def lh_predict_interpolate_pairs(event, context):
     handler = InterpolatePairs(event, context)
     return handler.handle()
 
+
+def lh_predict_mix(event, context):
+    from src.handlersPredict import PredictYNSN_Handler
+    handler = PredictYNSN_Handler(event, context)
+    return handler.handle()
+
+def lh_predict_mix_cell(event, context):
+    from src.handlersPredict import PredictCYNSN_Handler
+    handler = PredictCYNSN_Handler(event, context)
+    return handler.handle()
+
 # - - - FILE - - -
 
 def lf_files_cgats2json(event, context):
@@ -174,12 +185,6 @@ def lh_file_uploadedcgats_to_json(event, context):
 def lh_file_uploaded_interpolate_target(event, context):
     from src.handlersPredict import InterpolateTarget_Handler
     handler = InterpolateTarget_Handler(event, context)
-    return handler.handle()
-
-# NOT USED !!!
-def lh_file_uploaded_interpolate_target_chs(event, context):
-    from src.handlersPredict import InterpolateTarget_cubicHermiteSpline_Handler
-    handler = InterpolateTarget_cubicHermiteSpline_Handler(event, context)
     return handler.handle()
 
 
