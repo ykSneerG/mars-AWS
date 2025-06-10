@@ -349,7 +349,8 @@ class ColorTrafoNumpy:
             if incl.get("XYZ"):
                 entry["xyz"] = np.round(xyz[i], 2).tolist()
             if incl.get("LAB"):
-                entry["lab"] = np.round(lab[i], 2).tolist()
+                #entry["lab"] = np.round(lab[i], 2).tolist()
+                entry["lab"] = [round(float(num), 2) for num in lab[i]]
             if incl.get("LCH"):
                 entry["lch"] = {
                     "L": round(float(rounded_lch[i, 0]), 2),

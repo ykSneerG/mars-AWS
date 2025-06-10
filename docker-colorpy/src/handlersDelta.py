@@ -1,12 +1,12 @@
-from src.code.space.colorSample import SampleSpectral
+from src.code.colorMap import ColorMap
 from src.code.files.botox import Botox
 from src.code.files.cgatsToJson import CgatsToJson
 from src.handlers import BaseLambdaHandler
 from src.code.space.colorConverterNumpy import ColorTrafoNumpy
 from src.code.delta.colorDifference import ColorDiffernce
 from src.code.space.colorSpace import CsLAB, CsRGB
-import json
-import numpy as np  # type: ignore
+import numpy as np
+
 
 class IntersectionDelta_Handler(BaseLambdaHandler):
     
@@ -73,11 +73,6 @@ class IntersectionDelta_Handler(BaseLambdaHandler):
 
 
         # find all objects of the two arrays
-        """ 
-        Object
-        dcs: [0, 0, 0, 0] (4)
-        pcs: [0.3468, 0.4072, 0.5049, 0.7031, 0.9137, 0.9884, 0.9974, 0.9716, 0.9453, 0.9267, …] (36)
-        """
         intersection = []
         for sam_obj in color_sam:
             for ref_obj in color_ref:
@@ -103,29 +98,40 @@ class IntersectionDelta_Handler(BaseLambdaHandler):
         for entry, dcs in zip(col_intersect_sam, dcs_intersect):
             entry.update({"dcs": dcs})
 
+        
+        max_de00 = 11.5
+        heatmap = ColorMap(max_de00, ColorMap.map_plasma_adapted)
+
         col_intersect_delta = []
-        for( col_ref, col_sam) in zip(col_intersect_ref, col_intersect_sam):
+        for (col_ref, col_sam) in zip(col_intersect_ref, col_intersect_sam):
             lab_ref = CsLAB(col_ref["lab"][0], col_ref["lab"][1], col_ref["lab"][2])
             lab_sam = CsLAB(col_sam["lab"][0], col_sam["lab"][1], col_sam["lab"][2])
             de_trafo = ColorDiffernce(lab_ref, lab_sam)
-            #col_ref["dE00"] = de_trafo.de00()
 
-            de00 = de_trafo.de00()
-            max_de00 = 12
-            act_de00 = de00 if de00 < max_de00 else max_de00
-            r = act_de00 / max_de00 * 255
-            rgb = (255, 255 - int(r), 255 - int(r))
-            hex = CsRGB(rgb[0], rgb[1], rgb[2]).to_hex()
-
+            de00 = round(de_trafo.de00(), 4)
+            hex = heatmap.get_color_as_hex(de00)
 
             col_intersect_delta.append({
                 "dE00": de00,
                 "dE00HEX": hex
             })
-            
+
+            col_sam.update({
+                "weight": {
+                    "value": de00,
+                    "hex": hex
+                }
+            })
+            col_ref.update({
+                "weight": {
+                    "value": 0.0,
+                    "hex": heatmap.get_color_as_hex(0.0)
+                }
+            })
+
         de00_values = [col["dE00"] for col in col_intersect_delta]
         de00_average = sum(de00_values) / len(col_intersect_delta) if col_intersect_delta else 0
-        de00_95quantile = np.percentile(de00_values, 95) if col_intersect_delta else 0
+        de00_95quantile = np.percentile(de00_values, 95) if de00_values else 0
         de00_50quantile = np.percentile(de00_values, 50) if col_intersect_delta else 0
         de00_max = max(de00_values) if col_intersect_delta else 0
         de00_min = min(de00_values) if col_intersect_delta else 0
@@ -142,13 +148,12 @@ class IntersectionDelta_Handler(BaseLambdaHandler):
                 "dE00": col_intersect_delta["dE00"],
                 "dE00HEX": col_intersect_delta["dE00HEX"],
             })
+            
 
         jd = {
             "id": self.event.get("id", None),
             "sampleId": self.sam_id,
             "referenceId": self.ref_id,
-            #"sample": color_sam,
-            #"reference": color_ref,
             "intersection": result,
             "delta": {
                 "de00Average": de00_average,
