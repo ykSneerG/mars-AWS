@@ -749,9 +749,6 @@ class InterpolatePairs(BaseLambdaHandler):
 # -- YNSN -- YNSN -- YNSN -- YNSN -- YNSN -- YNSN -- YNSN -- YNSN --
 
 from src.code.predict.predictYNSN import YNSNPredictor
-from src.code.space.colorConverter import Cs_Spectral2Multi
-from src.code.space.colorConverterNumpy import ColorTrafoNumpy
-
 
 class PredictYNSN_Handler(BaseLambdaHandler):
 
@@ -762,86 +759,90 @@ class PredictYNSN_Handler(BaseLambdaHandler):
             "destination_types", {"SNM": True, "LCH": True, "HEX": True}
         )
         steps = self.event.get("steps", 5)
-        # src_dcs = self.event["src_dcs"]
         src_pcs = self.event["src_pcs"]
-        # dst_dcs = self.event["dst_dcs"]
-        dst_dcs = self.event.get(
-            "dst_dcs",
-            GradientMixGenerator.generate_dcs_tolist(np.linspace(0, 1, steps), 4),
+        dst_dcs = (
+            np.asarray(
+                self.event.get(
+                    "dst_dcs",
+                    GradientMixGenerator.generate_dcs(np.linspace(0, 100, steps), 4),
+                )
+            )
+            / 100
         )
-        nfactor = self.event.get("nfactor", 2.0)  # Default value for n is 2.0
 
-        fit_dcs = self.event.get("fit_dcs", [])
-        fit_pcs = self.event.get("fit_pcs", [])
+        nfactor = self.event.get("nfactor", 2.0)
 
+        fit_dcs = np.asarray(self.event.get("fit_dcs", [])) / 100
+        fit_pcs = np.asarray(self.event.get("fit_pcs", []))
+
+        # 🧠 🔁 
         predictor = YNSNPredictor(src_pcs, nfactor)
 
         if len(fit_dcs) > 0 and len(fit_pcs) > 0 and len(fit_dcs) == len(fit_pcs):
-            fitted_nfactor, iter = predictor.fit_n(
-                np.asarray(fit_dcs) / 100, np.asarray(fit_pcs)
-            )
-            jd.update({"fitted_nfactor": fitted_nfactor, "fit_iterations": iter})
+            fitted_nfactor, fitted_iter = predictor.fit_n(fit_dcs, fit_pcs)
+            jd.update({"fit": {"nfactor": fitted_nfactor, "iterations": fitted_iter}})
 
-        dst_pcs = predictor.predict_spectrum_batch(np.asarray(dst_dcs))
+        dst_pcs: np.ndarray = predictor.predict_spectrum_batch(dst_dcs)
 
-        colors = Cs_Spectral2Multi(dst_pcs.tolist(), dst_typ)
+        trafo = ColorTrafoNumpy()
+        colors = trafo.Cs_SNM2MULTI_NP(dst_pcs, dst_typ)
 
-        jd.update(
-            {
-                "elapsed": self.get_elapsed_time(),
-                "dst_dcs": dst_dcs,
-                "dst_pcs": dst_pcs.tolist(),
-                "color": colors,
-            }
-        )
+        dst_dcs_rounded = np.round(dst_dcs * 100, 2).tolist()
+        for entry, dcs in zip(colors, dst_dcs_rounded):
+            entry.update({"dcs": dcs})
+
+        jd.update({"elapsed": self.get_elapsed_time(), "color": colors})
 
         return self.get_common_response(jd)
 
 
 # -- CYNSN -- CYNSN -- CYNSN -- CYNSN -- CYNSN -- CYNSN -- CYNSN -- CYNSN --
 
-# from src.code.predict.predictYNSN import YNSNPredictor
-# from src.code.space.colorConverter import Cs_Spectral2Multi
-from src.code.predict.interpolateTarget import ModernRBFInterpolator, SavitzkyGolaySmoothing
+from src.code.predict.interpolateTarget import (
+    ModernRBFInterpolator,
+    SavitzkyGolaySmoothing,
+)
 from scipy.interpolate import LinearNDInterpolator
 
 class PredictCYNSN_Handler(BaseLambdaHandler):
-    
-    def hybrid_predict(self, cmyk_query, pred_linear, pred_rbf):
+
+    def hybrid_predict(
+        self, cmyk_query: np.ndarray, pred_linear: np.ndarray, pred_rbf: np.ndarray
+    ):
+        """
+        Mixing predictions from linear and RBF interpolators.
+
+        cmyk_query: np.ndarray (N, 4)
+        pred_linear: np.ndarray (N, L)
+        pred_rbf: np.ndarray (N, L)
+        """
+
         cmyk_query = np.atleast_2d(cmyk_query)
-        
-        # Interpolations
-        # pred_linear = linear_interp(cmyk_query)  # shape: (N, L)
-        # pred_rbf = rbf_interp(cmyk_query)        # shape: (N, L)
-        
         fallback_mask = np.isnan(pred_linear).any(axis=1)
-        
+
         # Heuristics
-        
         active_channels = np.sum(cmyk_query > 0.01, axis=1)  # count of CMYK channels
-        brightness = 1 - np.mean(cmyk_query, axis=1)         # crude brightness proxy
-        
-        
+        brightness = 1 - np.mean(cmyk_query, axis=1)  # crude brightness proxy
+
         tac_channels = np.sum(cmyk_query, axis=1)  # count of CYN channels
         max_reflectance = np.max(pred_linear, axis=1)
-        
+
         prefer_linear = (
-            #(active_channels >= 2) & (brightness < 0.5)
-            (tac_channels > 220) | (max_reflectance < 0.25) | (active_channels >= 3)
-            #(max_reflectance < 0.15)
+            # (active_channels >= 2) & (brightness < 0.5)
+            (tac_channels > 220)
+            | (max_reflectance < 0.25)
+            | (active_channels >= 3)
+            # (max_reflectance < 0.15)
         )
-        
+
         # Combine logic
         use_rbf = (~prefer_linear) & (~fallback_mask)
-        
+
         # Compose final prediction
         pred_combined = np.where(
-            use_rbf[:, None],  # shape (N, 1)
-            pred_rbf,
-            pred_linear
+            use_rbf[:, None], pred_rbf, pred_linear  # shape (N, 1)
         )
         return pred_combined
-
 
     def handle(self):
         jd = {}
@@ -855,56 +856,38 @@ class PredictCYNSN_Handler(BaseLambdaHandler):
         except Exception as e:
             return self.get_error_response(str(e))
 
-        entries = CgatsToJson({
-            "txt": txt_value,
-            "doublets_average": True,
-            "doublets_remove": True
-        }).entries
-        
-        """ entries_pcs = [x["pcs"] for x in entries]
+        entries = CgatsToJson(
+            {"txt": txt_value, "doublets_average": True, "doublets_remove": True}
+        ).entries
+
+        """ 
+        entries_pcs = [x["pcs"] for x in entries]
         entries_dcs = [x["dcs"] for x in entries]
 
         src_all = CgatsToJson.extract_corner(entries)
         src_pcs = [x["pcs"] for x in src_all]
-        src_dcs = [x["dcs"] for x in src_all] """
+        src_dcs = [x["dcs"] for x in src_all] 
+        """
+        fitting = CgatsToJson.DCS_CMYK_88
+        fit_all = CgatsToJson.extract_closestDCS(entries, fitting)
+        fit_dcs = np.asarray([x["dcs"] for x in fit_all])
+        fit_pcs = np.asarray([x["pcs"] for x in fit_all])
+        jd.update({"fit": {"Count": len(fitting), "Color": fit_all}})
 
-        jd.update({"usedDataCount": len(CgatsToJson.DCS_CMYK_88)})
-        fit_all = CgatsToJson.extract_closestDCS(entries, CgatsToJson.DCS_CMYK_88)
-        fit_dcs = [x["dcs"] for x in fit_all]
-        fit_pcs = [x["pcs"] for x in fit_all]
-        jd.update({
-            "fitColor": fit_all
-        })
-        
-        
-
-        dst_typ = self.event.get("destination_types", {"SNM": True, "LCH": True, "HEX": True})
-        
+        dst_typ = self.event.get(
+            "destination_types", {"SNM": True, "LCH": True, "HEX": True}
+        )
         steps = self.event.get("steps", 5)
-        dcs_grid = GradientMixGenerator.generate_dcs_tolist(np.linspace(0, 1, steps), 4)
-        dcs_grid_np = np.asarray(dcs_grid) * 100
-        
+        dcs_grid = GradientMixGenerator.generate_dcs(np.linspace(0, 100, steps), 4)
+
         roundtrip = self.event.get("roundtrip", False)
         if roundtrip:
-            dcs_grid = [x["dcs"] for x in entries]
-            dcs_grid_np = np.asarray(dcs_grid)
-            
-            """ jd.update({
-                "dst_dcs": dcs_grid,
-                "dcs_grid_input": [x["dcs"] for x in entries]
-            }) """
-
-        #dcs_grid_np = np.asarray(dcs_grid) * 100
-        #dcs_grid_np = np.asarray(dcs_grid)
+            dcs_grid = np.asarray([x["dcs"] for x in entries])
 
         # --- ✅ LINEAR INTERPOLATION ---
-        lnd_model = LinearNDInterpolator(
-            np.asarray(fit_dcs) / 100, 
-            fit_pcs, 
-            fill_value=np.nan
-        )
-        pcs_grid_lnd = lnd_model(np.asarray(dcs_grid_np) / 100)
-        
+        lnd_model = LinearNDInterpolator(fit_dcs, fit_pcs, fill_value=np.nan)
+        pcs_grid_lnd = lnd_model(dcs_grid)
+
         # --- ✅ RBF INTERPOLATION ---
         rbf_model = ModernRBFInterpolator()
         rbf_model.set_src_dcs(fit_dcs)
@@ -914,37 +897,30 @@ class PredictCYNSN_Handler(BaseLambdaHandler):
         rbf_model.set_epsilon(100)
         rbf_model.set_kernel(ModernRBFkernel.THINPLATESPLINE)
         rbf_model.precompute_interpolator()
+        pcs_grid_rbf = rbf_model.interpolate(dcs_grid)
 
-        pcs_grid_rbf = rbf_model.interpolate(dcs_grid_np)
-        
-        # --- HYBRID PREDICT ---
-        pcs_grid = self.hybrid_predict(dcs_grid_np, np.asarray(pcs_grid_lnd), pcs_grid_rbf)
+        # --- ✅ HYBRID PREDICT ---
+        pcs_grid = self.hybrid_predict(dcs_grid, pcs_grid_lnd, pcs_grid_rbf)
 
         # --- SAVATZKY-GOLAY SMOOTHING ---
-        """ sg = SavitzkyGolaySmoothing(pcs_grid, window_length=3, polyorder=4)
-        smoothed_pcs_grid = sg.apply_smoothing() """
+        """ 
+        sg = SavitzkyGolaySmoothing(pcs_grid, window_length=3, polyorder=4)
+        smoothed_pcs_grid = sg.apply_smoothing() 
+        """
 
-        # col_grid = Cs_Spectral2Multi(pcs_grid.tolist(), dst_typ)
         trafo = ColorTrafoNumpy()
-        col_grid = trafo.Cs_SNM2MULTI_NP(pcs_grid, dst_typ)
+        colors = trafo.Cs_SNM2MULTI_NP(pcs_grid, dst_typ)
 
-        dcs_grid_rounded = np.round(dcs_grid_np, 2).tolist()
-        for entry, dcs in zip(col_grid, dcs_grid_rounded):
+        dcs_grid_rounded = np.round(dcs_grid, 2).tolist()
+        for entry, dcs in zip(colors, dcs_grid_rounded):
             entry.update({"dcs": dcs})
-            
-        '''
-        dcs_list = dcs_grid_np.tolist()
-        for i, entry in enumerate(col_grid):
-            entry.update({"dcs": dcs_list[i]})
-        '''
-        
 
-        jd.update({
-            "elapsed": self.get_elapsed_time(),
-            #"dst_dcs": dcs_grid,
-            #"dst_pcs": pcs_grid.tolist(),
-            "color": col_grid,
-        })
+        jd.update(
+            {
+                "elapsed": self.get_elapsed_time(),
+                "color": colors,
+            }
+        )
 
         return self.get_common_response(jd)
 
@@ -1018,7 +994,46 @@ class InterpolateTarget_modernRBF_Handler(BaseLambdaHandler):
         return self.get_common_response(jd)
 
 
+# --- BLENDING --- BLENDING --- BLENDING --- BLENDING --- BLENDING ---
+
+class BlendSpectral_Handler(BaseLambdaHandler):
+    
+    def handle(self):
+        jd = {}
+
+        src_dcs_A = self.event["src_dcs_A"]
+        src_pcs_A = self.event["src_pcs_A"]
+        src_dcs_B = self.event["src_dcs_B"]
+        src_pcs_B = self.event["src_pcs_B"]
+        blend_factor = self.event.get("blend_factor", 0.5)
+
+
+        # --- BLEND SPECTRAL ---
+        blended_pcs = []
+        for i in range(len(src_dcs_A)):
+            blended_pc = (1 - blend_factor) * np.array(src_pcs_A[i]) + blend_factor * np.array(src_pcs_B[i])
+            blended_pcs.append(blended_pc)
+            
+        trafo = ColorTrafoNumpy()
+        colors = trafo.Cs_SNM2MULTI_NP(blended_pcs, {"SNM": True, "LCH": True, "HEX": True})
+        
+        dcs_grid_rounded = np.round(src_dcs_A, 2).tolist()
+        for entry, dcs in zip(colors, dcs_grid_rounded):
+            entry.update({"dcs": dcs})
+
+        jd.update(
+            {
+                "elapsed": self.get_elapsed_time(),
+                "colors": colors,
+            }
+        )
+        return self.get_common_response(jd)
+    
+    
+
+
 # NOT WORKING --- NICE IDEA BUT NOT WORKING
+
 
 class InterpolateTarget_Handler(BaseLambdaHandler):
     """

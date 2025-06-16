@@ -105,3 +105,12 @@ def lh_delta_intersection(event, context):
     handler = IntersectionDelta_Handler(event, context)
     return handler.handle()
     # -- USED: MARSAPI --
+    
+
+# - - - BLENDING - - -
+
+def lh_blend_spectral(event, context):
+    from src.handlersPredict import BlendSpectral_Handler
+    handler = BlendSpectral_Handler(event, context)
+    return handler.handle()
+    # -- USED: MARSAPI -- NEW !

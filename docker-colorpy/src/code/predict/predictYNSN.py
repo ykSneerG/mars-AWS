@@ -30,6 +30,34 @@ class YNSNPredictor:
             C * M * Y * K                                               # CMYK
         ], axis=1)
         return weights  # Shape: (N, 16)
+    
+
+    # !!! THIS IS NOT WORKING YET !!!
+    @staticmethod
+    def get_demichel_weights_batch_NP(channels: np.ndarray) -> np.ndarray:
+        """
+        Generalized Demichel weights using NumPy only.
+        Channel order: first channel = most significant bit (like C in CMYK).
+        """
+        B, N = channels.shape
+        one_minus = 1.0 - channels
+
+        num_combinations = 2 ** N
+
+        # Correct order: first channel is MSB, last is LSB (C=bit3, K=bit0)
+        bit_order = np.arange(N - 1, -1, -1)
+        combinations = ((np.arange(num_combinations)[:, None] >> bit_order) & 1).astype(np.uint8)
+
+        weights = np.ones((B, num_combinations), dtype=np.float32)
+
+        for i in range(num_combinations):
+            mask = combinations[i]  # shape: (N,)
+            selected = np.where(mask == 1, channels, one_minus)  # shape: (B, N)
+            weights[:, i] = np.prod(selected, axis=1)
+
+        return weights
+
+
 
     def predict_spectrum_batch(self, cmyk: np.ndarray) -> np.ndarray:        
         weights = self.get_demichel_weights_batch(cmyk)         # (N, 16)
