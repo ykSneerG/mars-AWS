@@ -79,6 +79,7 @@ def lh_file_uploadedcgats_to_json(event, context):
     from src.handlersFiles import File_UploadedToJson_Handler
     handler = File_UploadedToJson_Handler(event, context)
     return handler.handle()
+    # -- USED: MARSAPI --
 
 def lh_file_uploaded_interpolate_target(event, context):
     from src.handlersPredict import InterpolateTarget_Handler
@@ -113,4 +114,13 @@ def lh_blend_spectral(event, context):
     from src.handlersPredict import BlendSpectral_Handler
     handler = BlendSpectral_Handler(event, context)
     return handler.handle()
-    # -- USED: MARSAPI -- NEW !
+    # -- USED: MARSAPI --
+    
+
+# - - - PROFILE - - -
+
+def lh_profile_printer(event, context):
+    from src.handlersProfile import Profile_Handler
+    handler = Profile_Handler(event, context)
+    return handler.handle()
+    # -- USED: MARSAPI -- NEW ! UNDER DEVELOPMENT

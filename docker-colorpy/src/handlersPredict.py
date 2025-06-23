@@ -1015,7 +1015,7 @@ class BlendSpectral_Handler(BaseLambdaHandler):
             blended_pcs.append(blended_pc)
             
         trafo = ColorTrafoNumpy()
-        colors = trafo.Cs_SNM2MULTI_NP(blended_pcs, {"SNM": True, "LCH": True, "HEX": True})
+        colors = trafo.Cs_SNM2MULTI_NP(blended_pcs, {"SNM": True, "LCH": True, "LAB": True, "XYZ": True, "HEX": True})
         
         dcs_grid_rounded = np.round(src_dcs_A, 2).tolist()
         for entry, dcs in zip(colors, dcs_grid_rounded):
