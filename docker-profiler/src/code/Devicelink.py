@@ -235,22 +235,22 @@ class DevicelinkBase:
         return len(self.dl.icc)
     
     @staticmethod
-    def generate_typenschild(info: str, name: str, text: str = "", logs: str = "") -> str:
+    def generate_typenschild(info: str, name: str, text: str = "", logs: str = "", lic: str = "") -> str:
         
-        logs = "" if logs == "" else f"Report:\n{logs}"
+        logs = "" if logs == "" else f"Report:\n{logs}\n"
         text = "" if text == "" else f"\n{text}\n"
-        
+        lic = "" if lic == "" else f"\nLICENSE: {lic}\n"
+
         typenschild = \
             f"+++ {info} +++\n" + \
+            "\n" + \
             f"{name}.icc\n" + \
             f"{text}" + \
             "\n" + \
             "The profile is created by Heiko Pieper\n" + \
             "Copyright by colorspace.cloud and Heiko Pieper\n" + \
             "Hannover / Germany 2024-2025\n" + \
-            "\n" + \
-            "LICENSE: <LICENSE_INFO>\n" + \
-            "\n" + \
+            lic + \
             logs
         
         return typenschild

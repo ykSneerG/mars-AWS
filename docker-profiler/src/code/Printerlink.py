@@ -1,8 +1,6 @@
-import random
 from src.code.icctools.IccV4_ValueConverter import ICCvalueconverter as vc
 from src.code.icctools.IccV4_Elements import ICCheader_Prtr
 from src.code.icctools.IccV4_Elements import IccElements
-from src.code.icctools.Interpolation import Combinator
 from src.code.Devicelink import DevicelinkBase
 
 
@@ -14,14 +12,6 @@ class PrinterlinkV2:
     def __init__(self, params) -> None:
 
         self.name = params.get("name", "Default Name")
-
-        """ input_space = params["input_type"]
-        output_space = params["output_type"] """
-
-        """ self.input_channels: int = input_space["num"]
-        self.input_type: str = input_space["sig"]
-        self.output_channels: int = output_space["num"]
-        self.output_type: str = output_space["sig"] """
 
         """
         icTagTypeSignature: mft2
@@ -35,54 +25,54 @@ class PrinterlinkV2:
         self.wtpt = params.get("wtpt", [0.807, 0.829, 0.712])
         self.bktp = params.get("bktp", [0.007, 0.008, 0.006])
 
-        clut_atob0 = params.get("atob0_clut", None)
-        clut_atob1 = params.get("atob1_clut", None)
-        clut_atob2 = params.get("atob2_clut", None)
-
-        clut_btoa0 = params.get("btoa0_clut", None)
-        clut_btoa1 = params.get("btoa1_clut", None)
-        clut_btoa2 = params.get("btoa2_clut", None)
-
         self.atob0 = {
             "InputChan": 4,
             "OutputChan": 3,
-            "CLUT": clut_atob0,
+            "CLUT": params.get("atob0_clut", None),
+            "InputCurve": params.get("atob0_input_table", None),
+            "OutputCurve": params.get("atob0_output_table", None),
         }
         self.atob1 = {
             "InputChan": 4,
             "OutputChan": 3,
-            "CLUT": clut_atob1,
+            "CLUT": params.get("atob1_clut", None),
+            "InputCurve": params.get("atob1_input_table", None),
+            "OutputCurve": params.get("atob1_output_table", None),
         }
         self.atob2 = {
             "InputChan": 4,
             "OutputChan": 3,
-            "CLUT": clut_atob2,
+            "CLUT": params.get("atob2_clut", None),
+            "InputCurve": params.get("atob2_input_table", None),
+            "OutputCurve": params.get("atob2_output_table", None),
         }
         
-        #print(f"atob: {self.atob}")
         self.btoa0 = {
             "InputChan": 3,
             "OutputChan": 4,
-            "CLUT": clut_btoa0, #[(i + 1) * 255 for i in range(32)],
+            "CLUT": params.get("btoa0_clut", None), #[(i + 1) * 255 for i in range(32)],
+            "InputCurve": params.get("btoa0_input_table", None),
+            "OutputCurve": params.get("btoa0_output_table", None),
         }
         self.btoa1 = {
             "InputChan": 3,
             "OutputChan": 4,
-            "CLUT": clut_btoa1, #[(i + 1) * 255 for i in range(32)],
+            "CLUT": params.get("btoa1_clut", None), #[(i + 1) * 255 for i in range(32)],
+            "InputCurve": params.get("btoa1_input_table", None),
+            "OutputCurve": params.get("btoa1_output_table", None),
         }
         self.btoa2 = {
             "InputChan": 3,
             "OutputChan": 4,
-            "CLUT": clut_btoa2, #[(i + 1) * 255 for i in range(32)],
+            "CLUT": params.get("btoa2_clut", None), #[(i + 1) * 255 for i in range(32)],
+            "InputCurve": params.get("btoa2_input_table", None),
+            "OutputCurve": params.get("btoa2_output_table", None),
         }
-        #print(f"btoa: {self.btoa}")
 
         # self.input_channels: int = 4
         self.input_type: str = "CMYK"
         # self.output_channels: int = 3
         self.output_type: str = "LAB "
-
-        # self.grippoints = params.get("gridpoints", None)
 
         self.output_table = params.get("output_table", None)
 
@@ -129,10 +119,10 @@ class PrinterlinkV2:
             num_input_channels=self.atob0["InputChan"],
             num_output_channels=self.atob0["OutputChan"],
             lut_table=self.atob0["CLUT"],
-            # output_table=self.output_table
+            input_table=self.atob0["InputCurve"],
+            output_table=self.atob0["OutputCurve"],
         )
         en_a2b0_length = len(en_a2b0)
-        #print(f"en_a2b0_length: {en_a2b0_length}")
         profilesize += en_a2b0_length
         tagentries += 1
 
@@ -141,10 +131,10 @@ class PrinterlinkV2:
             num_input_channels=self.btoa0["InputChan"],
             num_output_channels=self.btoa0["OutputChan"],
             lut_table=self.btoa0["CLUT"],
-            # output_table=self.output_table
+            input_table=self.btoa0["InputCurve"],
+            output_table=self.btoa0["OutputCurve"],
         )
         en_b2a0_length = len(en_b2a0)
-        #print(f"en_b2a0_length: {en_b2a0_length}")
         profilesize += en_b2a0_length
         tagentries += 1
         # +++++++++++++++++++++++++++
@@ -153,10 +143,11 @@ class PrinterlinkV2:
             num_input_channels=self.atob1["InputChan"],
             num_output_channels=self.atob1["OutputChan"],
             lut_table=self.atob1["CLUT"],
-            # output_table=self.output_table
+            input_table=self.atob1["InputCurve"],
+            output_table=self.atob1["OutputCurve"],
+            
         )
         en_a2b1_length = len(en_a2b1)
-        #print(f"en_a2b1_length: {en_a2b1_length}")
         profilesize += en_a2b1_length
         tagentries += 1
 
@@ -165,10 +156,10 @@ class PrinterlinkV2:
             num_input_channels=self.btoa1["InputChan"],
             num_output_channels=self.btoa1["OutputChan"],
             lut_table=self.btoa1["CLUT"],
-            # output_table=self.output_table
+            input_table=self.btoa1["InputCurve"],
+            output_table=self.btoa1["OutputCurve"],
         )
         en_b2a1_length = len(en_b2a1)
-        #print(f"en_b2a1_length: {en_b2a1_length}")
         profilesize += en_b2a1_length
         tagentries += 1
         # +++++++++++++++++++++++++++
@@ -177,7 +168,8 @@ class PrinterlinkV2:
             num_input_channels=self.atob2["InputChan"],
             num_output_channels=self.atob2["OutputChan"],
             lut_table=self.atob2["CLUT"],
-            # output_table=self.output_table
+            input_table=self.atob2["InputCurve"],
+            output_table=self.atob2["OutputCurve"],
         )
         en_a2b2_length = len(en_a2b2)
         #print(f"en_a2b2_length: {en_a2b2_length}")
@@ -189,7 +181,8 @@ class PrinterlinkV2:
             num_input_channels=self.btoa2["InputChan"],
             num_output_channels=self.btoa2["OutputChan"],
             lut_table=self.btoa2["CLUT"],
-            # output_table=self.output_table
+            input_table=self.btoa2["InputCurve"],
+            output_table=self.btoa2["OutputCurve"],
         )
         en_b2a2_length = len(en_b2a2)
         #print(f"en_b2a2_length: {en_b2a2_length}")
@@ -430,32 +423,21 @@ class PrinterlinkV2:
 
 class Profile_Printer(DevicelinkBase):
     """
-    This class creates a linear devicelink to redirect all channels,
-    where Input and Output color space is the same.
+    This class creates a printer profile.
     """
 
     def create(self):
-        self.name += "_redirect"
-        self.order = self.params.get("channel_order", None)
+        #self.name += "_redirect"
+        #self.order = self.params.get("channel_order", None)
 
-        #self.params["gridpoints"] = self.generate_gridpoints()
         self.params["typenschild"] = DevicelinkBase.generate_typenschild(
-            info="This is a devicelink to redirect all channels. :)",
+            info="This is a printer profile.",
             name=self.name,
-            text=f"New ouptut channel order: {self.order}",
+            text=f"Conversion: {self.params['input_type']['sig']} -> LAB -> {self.params['output_type']['sig']}",
             logs="Test1\nTest2",  # self.cblogs
+            lic="<NO_LICENSE_INFO>",
         )
 
         self.dl = PrinterlinkV2(self.params)
         self.dl.check = self.logging
         self.icc = self.dl.create()
-
-    """ def generate_gridpoints(self):
-        cb = Combinator(self.output_channels, 2)
-
-        if self.order is None:
-            return cb.combos
-
-        res_redirection = cb.redirect_channels(cb.combos, self.order)
-        self.cblogs = cb.print_log()
-        return res_redirection """

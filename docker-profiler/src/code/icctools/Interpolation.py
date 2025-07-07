@@ -1,4 +1,8 @@
 import numpy as np    # type: ignore
+#from src.code.icctools.IccV4_Helper import Helper
+#from src.code.icctools.LutInvers import LUTInverter, LUTInverterGCR, LUTInverterGcrInksaver, SavitzkyGolaySmoothing
+
+
 
 class Combinator:
     
@@ -272,7 +276,6 @@ class LutMakerHybrid:
 
         final = np.stack([L_comp, a_comp, b_comp], axis=-1)
         return final.tolist()
-
 
 
 class VectorMapper:
@@ -595,4 +598,125 @@ class VectorScale:
 
         return np.stack([L_scaled, a, b], axis=1).tolist()
 
+    def apply_l_only_NEW(self, points, l_min, l_max):
+        """
+        Map L* from [l_min → l_max] to [0 → 100], preserving a*, b*.
+        
+        Args:
+            points: Input LAB colors as list or array (Nx3)
+            l_min: Minimum L* value to map from
+            l_max: Maximum L* value to map to
+        
+        Returns:
+            Scaled LAB colors in same format as input
+        """
+        points_np = np.asarray(points, dtype=np.float64)
+        
+        # Handle single color case
+        if points_np.ndim == 1:
+            points_np = points_np[np.newaxis, :]
+        
+        # Scale L* channel only
+        L_scaled = (points_np[:, 0] - l_min) * (100.0 / (l_max - l_min))
+        
+        # Clip to ensure values stay in [0, 100] range
+        L_scaled = np.clip(L_scaled, 0, 100)
+        
+        # Combine with original a*, b* channels
+        result = np.column_stack((L_scaled, points_np[:, 1], points_np[:, 2]))
+        
+        # Return in same format as input
+        if isinstance(points, list):
+            if len(points) > 0 and isinstance(points[0], (list, np.ndarray)):
+                return result.tolist()
+            return result[0].tolist()
+        return result
 
+
+    @staticmethod
+    def apply_ab_factor(points, a_factor, b_factor):
+        """
+        Scale a* and b* channels by given factors.
+        
+        Parameters:
+        points (list of list): List of LAB points.
+        a_factor (float): Scaling factor for a* channel.
+        b_factor (float): Scaling factor for b* channel.
+        
+        Returns:
+        list: Scaled LAB points.
+        """
+        points_np = np.array(points, dtype=np.float64)
+        
+        # Scale a* and b* channels
+        a_scaled = points_np[:, 1] * a_factor
+        b_scaled = points_np[:, 2] * b_factor
+        
+        return np.stack([points_np[:, 0], a_scaled, b_scaled], axis=1).tolist()
+    
+    @staticmethod
+    def scale_l_to_0_100(lab_colors):
+        """
+        Forces L* channel to exactly 0-100 range (min → 0, max → 100)
+        while keeping a* and b* unchanged.
+        
+        Args:
+            lab_colors: Input LAB colors (list of lists or NumPy array)
+            
+        Returns:
+            LAB colors with L* remapped to 0-100 (same format as input)
+        """
+        lab_np = np.asarray(lab_colors, dtype=np.float64)
+        
+        # Handle single color (shape = [3,]) vs multiple colors (shape = [N,3])
+        if lab_np.ndim == 1:
+            lab_np = lab_np[np.newaxis, :]
+        
+        L = lab_np[:, 0]  # Extract L* channel
+        l_min, l_max = np.min(L), np.max(L)
+        
+        if l_max == l_min:
+            # Edge case: All L* values are the same → set to 50 (mid-point)
+            lab_np[:, 0] = 50.0
+        else:
+            # Linearly remap L* so min → 0, max → 100
+            lab_np[:, 0] = (L - l_min) * (100.0 / (l_max - l_min))
+        
+        # Return in the same format as input
+        if isinstance(lab_colors, list):
+            return lab_np.tolist() if lab_np.shape[0] > 1 else lab_np[0].tolist()
+        return lab_np if lab_np.shape[0] > 1 else lab_np[0]
+    
+    @staticmethod
+    def scale_l_to_0_100_indexed(lab_colors, index_Min, index_Max):
+        """
+        Forces L* channel to exactly 0-100 range (min → 0, max → 100)
+        while keeping a* and b* unchanged.
+        
+        Args:
+            lab_colors: Input LAB colors (list of lists or NumPy array)
+            
+        Returns:
+            LAB colors with L* remapped to 0-100 (same format as input)
+        """
+        lab_np = np.asarray(lab_colors, dtype=np.float64)
+        
+        # Handle single color (shape = [3,]) vs multiple colors (shape = [N,3])
+        if lab_np.ndim == 1:
+            lab_np = lab_np[np.newaxis, :]
+        
+        L = lab_np[:, 0]  # Extract L* channel
+        l_min = lab_np[index_Min, 0] if index_Min < len(lab_np) else np.min(L)
+        l_max = lab_np[index_Max, 0] if index_Max < len(lab_np) else np.max(L)
+
+        if l_max == l_min:
+            return lab_np.tolist() if lab_np.shape[0] > 1 else lab_np[0].tolist()
+        else:
+            # Linearly remap L* so min → 0, max → 100
+            lab_np[:, 0] = (L - l_min) * (100.0 / (l_max - l_min))
+        
+        # Return in the same format as input
+        if isinstance(lab_colors, list):
+            return lab_np.tolist() if lab_np.shape[0] > 1 else lab_np[0].tolist()
+        return lab_np if lab_np.shape[0] > 1 else lab_np[0]
+    
