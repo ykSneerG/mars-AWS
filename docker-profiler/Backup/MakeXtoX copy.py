@@ -1,7 +1,9 @@
 import numpy as np    # type: ignore
-from src.code.icctools.LutInvers import LUTInverterKDTree_V3
+from src.code.icctools.LutInvers import LUTInverterKDTree
 from src.code.icctools.IccV4_Helper import Helper
 from src.code.icctools.Interpolation import VectorScale
+
+import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 
 
@@ -15,16 +17,6 @@ class MakeXtoXBase:
     @property
     def clut(self):
         return self._clut
-    
-    @clut.setter
-    def clut(self, clut):
-        """
-        Set the CLUT (Color Look-Up Table).
-
-        Args:
-            clut (list): The CLUT (Color Look-Up Table) to set.
-        """
-        self._clut = clut
 
     @property
     def index_lightest(self):
@@ -52,85 +44,74 @@ class MakeXtoXBase:
 
     @property
     def darkest(self):
-        """
-        Get the darkest LAB color.
-
-        Returns:
-            list: The darkest LAB color.
-        """
         return self.clut[self.index_darkest]
     
     @property
     def darkest_rounded(self):
-        return [round(x, 4) for x in self.clut[self.index_darkest]]
+        return [round(x, 4) for x in self._clut[self._index_darkest]]
     
 
 class MakeAtoB(MakeXtoXBase):
 
     def __init__(self, lut, dcs):
         super().__init__(lut)
-        self.dcs = dcs
+        self._dcs = dcs
 
     @property
     def clut_as_uint16(self):
-        labs = Helper.lab_to_uint16(self.clut)
-        return Helper.flatten_list(labs)
+        labs = Helper.lab_to_uint16(self._clut)
+        flat_list = Helper.flatten_list(labs)
+        return flat_list
 
 
     def generate_perceptual(self):
         """
         ### Generate the PERCEPTUAL LUT (AtoB0) 
+        by applying the necessary transformations.
         """
+        #self._media_relative()
         self._map_darkest_L_NEW()
 
     def generate_saturation(self):
         """
         ### Generate the SATURATION LUT (AtoB2) 
+        by applying the necessary transformations.
         """
+        #self._media_relative()
         self._map_darkest_L_NEW()
         self._scale_channel_AB()
 
     def generate_relative(self):
         """
         ### Generate the RELATIVE LUT (AtoB1) 
+        by applying the necessary transformations.
         """
+        #self._media_relative()
         pass
     
     def report(self, freeInfo: str = ""):
         """
         Print the AtoB LUT information.
         """
+        #print("")
         print(f"AtoB {freeInfo} LUT Information")
         print(f"{freeInfo}\tLightest - Index: ", self.index_lightest, "\t\tLAB: ", self.lightest_rounded)
         print(f"{freeInfo}\tDarkest. - Index: ", self.index_darkest, "\t\tLAB: ", self.darkest_rounded)
+        #print("- + - + - + - + - + - + - + - + - + - + -")
         print("")
 
-    def _scale_channel_AB(self, scale_ab: float = 0.4):
+
+    def _scale_channel_AB(self, scale_ab: float = 0.75):
         """ 
         Scale a* and b* channels from input LUT to output LUT.
         """
-        # self.clut = VectorScale.apply_ab_factor(self.clut, scale_ab, scale_ab)
-        # self.clut = VectorScale.apply_lch_factor(self.clut, scale_ab)
-        # self.clut = VectorScale.scale_ab_saturation_l_weighted(self.clut, scale_ab, "cosine")
-        # self.clut = VectorScale.scale_ab_saturation_with_hull(self.clut, factor=0.8, l_curve="cosine", hue_bins=360)
-        # self.clut = VectorScale.scale_ab_saturation_with_hull_photoshop(self.clut, factor=scale_ab, l_curve="cosine", hue_bins=360)
-        # self.clut = VectorScale.scale_ab_saturation_with_hull_photoshop2(self.clut, factor=scale_ab, l_curve="cosine", hue_bins=180, smooth_hull=True, smooth_size=30)
-        self.clut = VectorScale.scale_ab_saturation_photoshop_gamma(self.clut, factor=scale_ab)
-
+        self._clut = VectorScale.apply_ab_factor(self.clut, scale_ab, scale_ab)
 
     def _map_darkest_L_NEW(self):
         """
         Map darkest L* to 0.
         """
-        print("--Mapping L* to 0...100")
-        print("Lightest", np.max(self.clut, axis=0).tolist())
-        print("Darkest L* value before mapping: ", self.darkest_rounded[0])
-        print("Lightest L* value before mapping: ", self.lightest_rounded[0])
-        self.clut = VectorScale.scale_l_to_0_100_me(self.clut, self.darkest[0], self.lightest[0])
-        # self.clut = VectorScale.scale_l_to_0_100_me(self.clut, 42, 100, bpc=True)
-        print("Darkest L* value after mapping: ", self.darkest_rounded[0])
-        print("Lightest L* value after mapping: ", self.lightest_rounded[0])
-        print("--")
+        self._clut = VectorScale.scale_l_to_0_100_indexed(self.clut, self.index_darkest, self.index_lightest)
 
 
     def interpolate_clut(self, grid_size: int = 17):
@@ -144,10 +125,12 @@ class MakeAtoB(MakeXtoXBase):
         - dense_clut: ndarray of shape (grid_size**channels, 3)
         """
         
-        dense_dcs, dense_lab = MakeAtoB.interpolate_grid(self.dcs, self.clut, grid_size)
-        self.clut = dense_lab.tolist()
-        self.dcs = dense_dcs.tolist()
+        dense_dcs, dense_lab = MakeAtoB.interpolate_grid(self._dcs, self.clut, grid_size)
+        self._clut = dense_lab.tolist()
+        self._dcs = dense_dcs.tolist()
         
+        
+
     @staticmethod
     def interpolate_grid(dcs, lab, grid_size: int = 17):
         """
@@ -197,7 +180,7 @@ class MakeBtoA(MakeXtoXBase):
     
     def __init__(self, dcs, lut, grid_size=11):
         super().__init__(lut)
-        self.dcs = dcs
+        self._dcs = dcs
         self.grid_size = grid_size
 
     @property
@@ -211,34 +194,24 @@ class MakeBtoA(MakeXtoXBase):
 
     def generate(self):
         """
-        Generate the BtoA LUT..
+        Generate the BtoA LUT by applying the necessary transformations.
         """
         
-        inverter = LUTInverterKDTree_V3(
-            atob_lut=list(zip(self.dcs, self.clut)),
-            cmyk_grid_size=np.unique(np.array(self.dcs)).size,
-            lab_grid_shape=(self.grid_size, self.grid_size, self.grid_size),
-            max_ink_limit=3.0
-        )
-        # self.clut = inverter.build_btoa_lut(mode='hybrid', gray_eps=2.5)
-        # self.clut = inverter.build_btoa_lut(mode='hybrid', gray_eps=22.5, smoothing='none')
+        #lut_atob = list(zip(self._dcs, self._clut))
+        #print(lut_atob)
+
+        # get cmyk_grid_size from the LUT
+        #np_dcs_grid_size = np.unique(np.array(self._dcs)).size
         
-        self.clut = inverter.build_btoa_lut(
-            mode='hybrid',
-            gray_eps=22.5,
-            smoothing='edge_cmy',
-            smoothing_kwargs={'sigma_edge': 0.5, 'sigma_inner': 0.2, 'edge_thresh': 3.5}
-        )
-        
-        
-        """ inverter = LUTInverterKDTree(
-            atob_lut=list(zip(self.dcs, self.clut)),
-            cmyk_grid_size=np.unique(np.array(self.dcs)).size,
+        inverter = LUTInverterKDTree(
+            atob_lut=list(zip(self._dcs, self._clut)),
+            cmyk_grid_size=np.unique(np.array(self._dcs)).size,
             lab_grid_shape=(self.grid_size, self.grid_size, self.grid_size),
             loss_function='linear_k',
             max_ink_limit=4.00
         )
-        self.clut = inverter.build_btoa_lut(mode='hybrid', kdtree_resolution=20) """
+        
+        self._clut = inverter.build_btoa_lut(mode='hybrid', kdtree_resolution=20)
 
     def report(self, freeInfo: str = ""):
         """
@@ -353,6 +326,9 @@ class MakeCurve:
         [int(i / 6 * 65534) for i in range(7)], """
 
 
+import numpy as np
+from scipy.interpolate import RegularGridInterpolator
+
 class BToAInterpolator:
     def __init__(self, lab_grid_shape, lab_vals, cmyk_vals):
         self.lab_grid_shape = lab_grid_shape
@@ -362,8 +338,8 @@ class BToAInterpolator:
         self.a_axis = np.linspace(-128, 127, lab_grid_shape[1])
         self.b_axis = np.linspace(-128, 127, lab_grid_shape[2])
         self.interpolator = RegularGridInterpolator(
-            points=(self.L_axis, self.a_axis, self.b_axis),
-            values=self.cmyk_vals,
+            (self.L_axis, self.a_axis, self.b_axis),
+            self.cmyk_vals,
             bounds_error=False,
             fill_value=np.nan
         )
@@ -415,10 +391,238 @@ class BToAInterpolator:
 
         # LAB → CMYK Konvertierung
         # cmyk = np.array(self.lab_to_cmyk(lab_values.tolist()))
-        # print("LAB Values: ", lab_values.tolist())
+        print("LAB Values: ", lab_values.tolist())
         dcs = self.lab_to_cmyk(lab_values)
-        # print("CMYK Values: ", dcs)
+        print("CMYK Values: ", dcs)
 
         
         # lab_value = [[l, 0, 0] for l in range(100, -1, -2)]  
         return dcs #self.lab_to_cmyk(lab_values)
+
+        
+
+
+# --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED --- UNUSED ---
+
+
+class MakeBtoA_UNUSED(MakeXtoXBase):
+    
+    def __init__(self, dcs, lut, grid_size=11):
+        super().__init__(lut)
+        self._dcs = dcs
+        self.grid_size = grid_size
+        
+        #self.inverter = None
+
+    """ @property
+    def clut(self):
+        return self._clut """
+
+    @property
+    def clut_as_uint16(self):
+        """ btoa_uint16 = (self.clut * 65535.0).astype(np.uint16).tolist()
+        flat_list = Helper.flatten_list(btoa_uint16)
+        return flat_list """
+        arr = np.asarray(self.clut)
+        flat = (arr * 65535.0).round().astype(np.uint16).ravel()
+        return flat.tolist()
+
+    # @staticmethod
+    # def argyll_style_gcr_curve(L):
+    #     """
+    #     Return a set of K levels based on lightness (L*),
+    #     simulating Argyll -kr (robust GCR)
+    #     """
+    #     # Definiere maximale Schwarzmenge über L*
+    #     if L > 95:
+    #         k_max = 0.0
+    #     elif L > 70:
+    #         k_max = 0.3
+    #     elif L > 50:
+    #         k_max = 0.6
+    #     else:
+    #         k_max = 1.0
+
+    #     return np.linspace(0, k_max, 5)  # 5 K-Kandidaten testen
+
+
+    def generate(self):
+        """
+        Generate the BtoA LUT by applying the necessary transformations.
+        """
+        
+        lut_atob = list(zip(self._dcs, self._clut))
+        #print(lut_atob)
+
+        # get cmyk_grid_size from the LUT
+        np_dcs_grid_size = np.unique(np.array(self._dcs)).size
+        
+        # really the best and working with smallest de but curves are not so good
+        """ inverter = LUTInverterPur(
+            lut_atob, 
+            cmyk_grid_size=np_dcs_grid_size, 
+            lab_grid_shape=(self.grid_size, self.grid_size, self.grid_size)
+        ) """
+        inverter = LUTInverterKDTree(
+            lut_atob,
+            cmyk_grid_size=np_dcs_grid_size,
+            lab_grid_shape=(self.grid_size, self.grid_size, self.grid_size),
+            loss_function='linear_k',
+            max_ink_limit=3.75
+        )
+        
+        self._clut = inverter.build_btoa_lut(mode='hybrid', kdtree_resolution=20)
+                
+        """ inverter = LUTInverter_Multi(
+            lut_atob, 
+            cmyk_grid_size=7, 
+            lab_grid_shape=(self.grid_size, self.grid_size, self.grid_size), 
+            interpolation_method='tetrahedral',
+        ) """
+        
+        """ inverter = LUTInverterTetrahedral(
+            lut_atob, 
+            cmyk_grid_size=7, 
+            lab_grid_shape=(self.grid_size, self.grid_size, self.grid_size)
+        ) """
+        
+        
+        # This works
+        """ inverter = LUTInverterGCR(
+            lut_atob, 
+            cmyk_grid_size=7, 
+            lab_grid_shape=(self.grid_size, self.grid_size, self.grid_size), 
+            black_start=0.05, 
+            black_width=1.0, 
+            black_strength=0.75
+        ) """
+        
+        
+        
+        """ inverter = LUTInverterGCR(
+            lut_atob, 
+            cmyk_grid_size=7, 
+            lab_grid_shape=(self.grid_size, self.grid_size, self.grid_size),
+            black_strength=1.0,
+            black_start=0.2, 
+            black_end=0.8
+        ) """
+        """ inverter = LUTInverterGCR(
+            atob_lut=lut_atob,
+            cmyk_grid_size=7,
+            lab_grid_shape=(self.grid_size, self.grid_size, self.grid_size),
+            black_curve=MakeBtoA.argyll_style_gcr_curve,
+            regularization=0.01
+        ) """
+
+        """ inverter = LUTInverterGCR(
+            atob_lut=lut_atob, 
+            cmyk_grid_size=7, 
+            lab_grid_shape=(self.grid_size, self.grid_size, self.grid_size), 
+            black_levels=21,
+            l_target=50.0,
+            regularization=0.1
+        ) """
+        # Build BToA LUT    
+        
+        # self._clut = inverter.build_btoa_lut(mode='hybrid')
+        # self._clut = LUTInverterPur.gaussian_filter(self._clut, sigma=0.25)
+        #self._clut = LUTInverterPur.smooth_btoa_median(self._clut, size=5)
+
+    def report(self, freeInfo: str = ""):
+        """
+        Print the BtoA LUT information.
+        """
+        #print("- + - + - + - + - + - + - + - + - + - + -")
+        print("")
+        print(f"BtoA {freeInfo} LUT Information")
+        print("Shape: ", self.clut.shape)
+        print("Length: ", int(self.clut.size / self.clut.shape[3]))
+        #print("First entry: ", self.clut[0][0][0])
+        #print("Last entry: ", self.clut[-1][-1][-1])
+        print("Channel Count: ", self.clut.shape[3])
+        print("Grid Size: ", self.grid_size)
+        #print("")
+        print("- + - + - + - + - + - + - + - + - + - + -")
+
+    
+
+
+
+    # def black_generation(self, dcs, pcs):
+    #     '''
+    #     1. Create a neutral LAB axis in 20 steps from 0,0,0 to 100,0,0.
+    #     2. Interpolate self_clut to get the dcs combinations for the neutral LAB axis.
+    #     '''
+    #     # Create a neutral LAB axis
+    #     neutral_lab = np.linspace(0, 100, 20).reshape(-1, 1)
+    #     neutral_lab = np.concatenate([neutral_lab, np.zeros_like(neutral_lab), np.zeros_like(neutral_lab)], axis=1)
+        
+    #     list_dcs_pcs = list(zip(dcs, pcs))
+        
+    #     # Interpolate the LUT to get the dcs combinations for the neutral LAB axis
+    #     interpolator = RegularGridInterpolator(            
+    #         list_dcs_pcs,
+    #         neutral_lab,
+    #         bounds_error=False,
+    #         fill_value=None
+    #     )
+    #     interpolated_dcs = interpolator(neutral_lab)
+        
+        
+
+    # @staticmethod
+    # def createBtoA(dcs, pcs, info, grid_size=7):
+    #     """ 
+    #     Create a BtoA LUT from the given device color space (dcs) and perceptual color space (pcs).
+    #     The LUT is built using the LUTInverterGCR class, which handles the inversion of the LUT.
+        
+    #     Parameters:
+    #     dcs (list): List of device color space values.
+    #     pcs (list): List of perceptual color space values.
+    #     info (str): Information string to be printed about the LUT.
+    #     """
+        
+        
+    #     print("- + - + - + - + - + - + - + - + - + - + -")
+    #     print(info)
+        
+    #     lut_atob = list(zip(dcs, pcs))
+    #     #print(lut_atob)
+
+    #     """ inverter = LUTInverterGCR(
+    #         lut_atob, 
+    #         cmyk_grid_size=7, 
+    #         lab_grid_shape=(grid_size, grid_size, grid_size), 
+    #         black_start=0.0, 
+    #         black_width=0.75, 
+    #         black_strength=1.0
+    #     ) """
+        
+    #     inverter = LUTInverter_ColorScience(
+    #         lut_atob=lut_atob,
+    #         cmyk_grid_size=7,
+    #         lab_grid_shape=(grid_size, grid_size, grid_size)
+    #     )
+    #     # Build BToA LUT
+    #     lut_btoa = inverter.build_btoa_lut()
+        
+    #     # --- Optionally smooth the result ---
+        
+    #     #smoothed_atob1 = LUTInverter.smooth_lut_2(inverter_atob1, sigma=1.0)
+        
+    #     #sgs = SavitzkyGolaySmoothing(inverter_atob1, 5, 2)
+    #     #smoothed_atob1 = sgs.apply_smoothing()
+        
+    #     # smoothed_atob1 = inverter.smooth_lut_edge_aware(inverter_atob1, 1.0, 0.5)
+
+    #     res_btoa = lut_btoa
+
+    #     #print("Table: ", res_btoa)
+    #     print("Shape: ", res_btoa.shape)
+    #     print("Length: ", int(res_btoa.size / res_btoa.shape[3]))
+    #     #print("First: ", res_btoa[0][0][0])
+
+    #     btoa_uint16 = (res_btoa * 65535.0).astype(np.uint16).tolist()
+
+    #     return btoa_uint16

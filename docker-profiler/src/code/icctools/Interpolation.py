@@ -1,8 +1,5 @@
 import numpy as np    # type: ignore
-#from src.code.icctools.IccV4_Helper import Helper
-#from src.code.icctools.LutInvers import LUTInverter, LUTInverterGCR, LUTInverterGcrInksaver, SavitzkyGolaySmoothing
-
-
+from scipy.ndimage import uniform_filter1d
 
 class Combinator:
     
@@ -654,6 +651,329 @@ class VectorScale:
         
         return np.stack([points_np[:, 0], a_scaled, b_scaled], axis=1).tolist()
     
+    
+
+    @staticmethod
+    def scale_ab_saturation_photoshop_gamma(points, factor=1.2, hue_bins=360,
+                                            smooth_hull=True, base_smooth_size=5,
+                                            adaptive=True, gamma=0.5, alpha=0.2):
+        """
+        Photoshop-ähnliche Sättigungsskalierung mit Gamma-basiertem L*-Weighting.
+        Optimiert für Cloud/Docker (schnell, speichersparend).
+
+        Args:
+            points (list): [[L*, a*, b*], ...] Punkte (z. B. aus CLUT).
+            factor (float): Chroma-Skalierungsfaktor (0.4–1.0 erhöht Sättigung, >1.0 entsättigt).
+            hue_bins (int): Anzahl Hue-Bins (180 für Speed, 360 für Präzision).
+            smooth_hull (bool): Chroma-Hülle glätten.
+            base_smooth_size (int): Basisfenster für Glättung.
+            adaptive (bool): Passe Glättung an die Punktdichte pro Hue-Bin an.
+            gamma (float): Steuert Mitteltöne (0.4–0.7 ist typisch).
+            alpha (float): Minimalgewicht in Lichtern/Tiefen (0.1–0.3).
+
+        Returns:
+            list: LAB-Punkte mit angepasster Sättigung.
+        """
+        lab = np.asarray(points, dtype=np.float64)
+        L, A, B = lab[:, 0], lab[:, 1], lab[:, 2]
+
+        # Chroma und Hue berechnen
+        C = np.hypot(A, B)
+        H = np.degrees(np.arctan2(B, A)) % 360
+        hue_indices = np.floor(H * hue_bins / 360).astype(int)
+
+        # Maximalchroma + Dichte pro Hue-Bin
+        C_max = np.zeros(hue_bins, dtype=np.float64)
+        counts = np.zeros(hue_bins, dtype=np.float64)
+        np.maximum.at(C_max, hue_indices, C)
+        np.add.at(counts, hue_indices, 1)
+        C_max[C_max == 0] = 1e-6
+
+        # Adaptive Glättung der Hülle
+        if smooth_hull and base_smooth_size > 1:
+            if adaptive:
+                density_factor = 1.5 - (counts / (counts.max() + 1e-6))
+                density_factor = np.clip(density_factor, 1.0, 3.0)
+                smooth_sizes = np.clip((base_smooth_size * density_factor).astype(int), 1, hue_bins//4)
+            else:
+                smooth_sizes = np.full(hue_bins, base_smooth_size, dtype=int)
+
+            max_window = smooth_sizes.max()
+            smoothed = uniform_filter1d(C_max, size=max_window, mode="wrap")
+            weight = (smooth_sizes - smooth_sizes.min()) / (smooth_sizes.max() - smooth_sizes.min() + 1e-6)
+            C_max = (1 - weight) * C_max + weight * smoothed
+
+        # Gamma-basierte L*-Gewichtung (Photoshop-Style)
+        L_norm = np.clip(L / 100.0, 0, 1)
+        l_weight = (L_norm ** gamma) * (1 - alpha) + alpha  # schützt Lichter/Tiefen
+
+        # Ziel-Chroma
+        C_target = C * (factor * l_weight + (1 - l_weight))
+
+        # Soft-Clipping an geglättete Hülle
+        C_hull = C_max[hue_indices]
+        delta = C_hull - C
+        t = np.clip((C_target - C) / (delta + 1e-6), 0, 1)
+        C_final = C + t * delta
+
+        # Neue a/b-Werte
+        scale = np.divide(C_final, C, out=np.ones_like(C), where=C != 0)
+        A *= scale
+        B *= scale
+
+        return np.column_stack((L, A, B)).tolist()
+
+    
+
+    @staticmethod
+    def scale_ab_saturation_with_hull_photoshop2(points, factor=1.2, l_curve="cosine", hue_bins=360, smooth_hull=True, smooth_size=5):
+        """
+        Optimized saturation scaling in LAB space with chroma limits.
+        Mimics Photoshop-like behavior with soft clipping and L* weighting.
+
+        Sinnvolle Parameter:
+        factor:
+            greater 1.0 → will desaturate colors
+            1.0 → no effect, original colors
+            0.8–0.9 → slighter saturation enhancement
+            0.4–0.6 → stronger saturation enhancement
+            0.2–0.3 → extreme saturation enhancement, can lead to clipping
+        hue_bins:
+            180 ist schnell und ausreichend.
+            360 ist feiner, besser bei großen LUTs (aber mehr Rechenaufwand).
+
+
+        Args:
+            points (list): List of [L*, a*, b*] values (e.g., CLUT points).
+            factor (float): Chroma scaling factor (>1.0 boosts saturation).
+            l_curve (str): L*-weighting ("cosine", "linear", "none").
+            hue_bins (int): Number of hue bins for estimating chroma hull.
+            smooth_hull (bool): Smooth the chroma hull for continuity.
+            smooth_size (int): Kernel size for hull smoothing.
+
+        Returns:
+            list: LAB values with scaled saturation.
+        """
+        lab = np.asarray(points, dtype=np.float64)
+        L, A, B = lab.T
+
+        # Chroma & Hue
+        C = np.hypot(A, B)
+        H = np.degrees(np.arctan2(B, A)) % 360
+        hue_indices = np.floor(H * hue_bins / 360).astype(int)
+
+        # Chroma hull per hue bin
+        C_max_per_hue = np.zeros(hue_bins)
+        np.maximum.at(C_max_per_hue, hue_indices, C)
+        C_max_per_hue[C_max_per_hue == 0] = 1e-6
+
+        # Smooth hull (avoids jagged transitions between hues)
+        if smooth_hull:
+            C_max_per_hue = uniform_filter1d(C_max_per_hue, size=smooth_size, mode="wrap")
+
+        # L* weighting
+        if l_curve == "cosine":
+            # Softere Variante: in Lichtern/Tiefen nicht komplett auf 0
+            l_weight = (np.cos((L - 50) / 100 * np.pi) * 0.5 + 0.5) ** 2
+        elif l_curve == "linear":
+            l_weight = np.clip(L / 100.0, 0, 1)
+        else:  # "none"
+            l_weight = np.ones_like(L)
+
+        # Target chroma Photohsop-like
+        #C_target = C * (1 + (factor - 1) * l_weight)
+        # Target chroma clamped to hull
+        C_target = C * (factor * l_weight + (1 - l_weight))
+
+        # Soft-Clipping: sanft an die Hülle annähern, nicht hart abschneiden
+        C_hull = C_max_per_hue[hue_indices]
+        delta = C_hull - C
+        t = np.clip((C_target - C) / (delta + 1e-6), 0, 1)
+        C_final = C + t * delta
+
+        # Rescale A/B based on new chroma
+        scale = np.divide(C_final, C, out=np.ones_like(C), where=C != 0)
+        A_new = A * scale
+        B_new = B * scale
+
+        return np.column_stack((L, A_new, B_new)).tolist()
+
+    
+    
+    @staticmethod
+    def scale_ab_saturation_with_hull_photoshop(points, factor=1.2, l_curve="cosine", hue_bins=360):
+        """
+        Optimized saturation scaling in LAB space with chroma limits.
+        
+        Args:
+            points (list): List of [L*, a*, b*] points (CLUT).
+            factor (float): Chroma scaling factor.
+            l_curve (str): L*-weighting ("cosine", "linear", "none").
+            hue_bins (int): Number of hue bins for chroma limits.
+            
+        Returns:
+            list: New LAB values with saturation scaling.
+        """
+        lab = np.asarray(points, dtype=np.float64)
+        L, A, B = lab.T  # Transposed for direct unpacking
+
+        # Chroma + hue
+        C = np.hypot(A, B)
+        H = np.degrees(np.arctan2(B, A)) % 360
+        hue_indices = np.floor(H * hue_bins / 360).astype(int)
+
+        # Max C per hue
+        C_max_per_hue = np.zeros(hue_bins)
+        np.maximum.at(C_max_per_hue, hue_indices, C)
+        C_max_per_hue[C_max_per_hue == 0] = 1e-6
+        
+        # Optionaler Glättungsschritt 
+        # C_max_per_hue = uniform_filter1d(C_max_per_hue, size=5, mode="wrap")
+
+        # L* weighting
+        if l_curve == "cosine":
+            l_weight = np.cos(np.clip((L - 50) / 100 * np.pi, -np.pi / 2, np.pi / 2)) ** 2
+        elif l_curve == "linear":
+            l_weight = np.clip(L / 100.0, 0, 1)
+        else:
+            l_weight = np.ones_like(L)
+
+        # Chroma scaling with clamping
+        C_target = C * (1 + (factor - 1) * l_weight)
+        C_final = np.minimum(C_target, C_max_per_hue[hue_indices])
+        
+        """ t = (C_target - C) / (C_max_per_hue[hue_indices] - C)
+        t = np.clip(t, 0, 1)
+        C_final = C + t * (C_max_per_hue[hue_indices] - C) """
+
+
+        # AB rescaling
+        scale = np.divide(C_final, C, out=np.ones_like(C), where=C != 0)
+        a_new = A * scale
+        b_new = B * scale
+
+        return np.column_stack((L, a_new, b_new)).tolist()
+
+    @staticmethod
+    def scale_ab_saturation_with_hull(points, factor=1.2, l_curve="cosine", hue_bins=360):
+        """
+        Skaliert Chroma in der AB-Ebene mit Helligkeitsgewichtung,
+        beschränkt durch Chroma-Hülle (pro Hue).
+
+        Args:
+            points (list): Liste von [L*, a*, b*] Punkten (CLUT).
+            factor (float): Chroma-Skalierungsfaktor.
+            l_curve (str): L*-Gewichtung ("cosine", "linear", "none").
+            hue_bins (int): Anzahl der Hue-Bins zur Hüllenermittlung.
+
+        Returns:
+            list: Neue LAB-Werte mit saturationsgewichteter Skalierung.
+        """
+        lab = np.asarray(points, dtype=np.float64)
+        L, a, b = lab[:, 0], lab[:, 1], lab[:, 2]
+
+        # Chroma + Hue berechnen
+        C = np.sqrt(a**2 + b**2)
+        H = (np.degrees(np.arctan2(b, a)) + 360) % 360  # Hue in [0, 360)
+
+        # Hüllenkurve: max C* pro Hue-Bin
+        hue_indices = np.floor(H * hue_bins / 360).astype(int)
+        C_max_per_hue = np.zeros(hue_bins)
+
+        for i in range(hue_bins):
+            C_max_per_hue[i] = np.max(C[hue_indices == i]) if np.any(hue_indices == i) else 1e-6
+
+        # L*-gewichtung
+        if l_curve == "cosine":
+            l_weight = np.cos((L - 50) / 100 * np.pi) ** 2
+        elif l_curve == "linear":
+            l_weight = L / 100.0
+        else:
+            l_weight = np.ones_like(L)
+
+        # Ziel-Chroma berechnen + clamping zur Hülle
+        C_target = C * (1 + (factor - 1) * l_weight)
+        C_max_clamp = C_max_per_hue[hue_indices]
+        C_final = np.minimum(C_target, C_max_clamp)
+
+        # zurück zu A/B
+        H_rad = np.radians(H)
+        a_new = C_final * np.cos(H_rad)
+        b_new = C_final * np.sin(H_rad)
+
+        result = np.stack([L, a_new, b_new], axis=1)
+        return result.tolist()
+
+    
+    @staticmethod
+    def scale_ab_saturation_l_weighted(points, factor, l_curve="cosine"):
+        """
+        Sättigung abhängig von L*: z. B. weniger in Schatten/Spitzlichtern.
+
+        Args:
+            points (list): [[L, a, b], ...]
+            factor (float): Maximaler Chroma-Scaling-Faktor
+            l_curve (str): Kurventyp ('cosine', 'linear', 'quad')
+
+        Returns:
+            list: LAB-Liste mit angepasster Sättigung
+        """
+        lab = np.asarray(points, dtype=np.float64)
+        L = lab[:, 0]
+        a = lab[:, 1]
+        b = lab[:, 2]
+        chroma = np.sqrt(a**2 + b**2)
+
+        # Skalar (0–1) basierend auf L-Kurve
+        if l_curve == "cosine":
+            # Maximale Sättigung bei L=50, reduziert bei L=0/100
+            l_weight = np.cos((L - 50) / 100 * np.pi) ** 2
+        elif l_curve == "linear":
+            l_weight = 1.0 - np.abs(L - 50) / 50
+        elif l_curve == "quad":
+            l_weight = 1.0 - ((L - 50) / 50) ** 2
+        else:
+            l_weight = np.ones_like(L)
+
+        # Skaliere Chroma
+        scaling = 1.0 + (factor - 1.0) * l_weight
+        with np.errstate(divide='ignore', invalid='ignore'):
+            a_scaled = a * scaling
+            b_scaled = b * scaling
+
+        return np.stack([L, a_scaled, b_scaled], axis=1).tolist()
+
+
+    def apply_lch_factor(points, c_factor):
+        """
+        Scale chroma (C*) in LAB colors by a factor, preserving L and hue.
+
+        Args:
+            points (list of [L, a, b]): Input LAB colors.
+            c_factor (float): Scaling factor for Chroma.
+
+        Returns:
+            list: LAB colors with scaled chroma.
+        """
+        points_np = np.asarray(points, dtype=np.float64)
+
+        A = points_np[:, 1]
+        B = points_np[:, 2]
+
+        # Compute original chroma
+        C = np.sqrt(A**2 + B**2)
+
+        # Avoid division by zero
+        with np.errstate(divide='ignore', invalid='ignore'):
+            scale = np.where(C > 0, (C * c_factor) / C, 1.0)
+
+        A_scaled = A * scale
+        B_scaled = B * scale
+
+        result = np.stack([points_np[:, 0], A_scaled, B_scaled], axis=1)
+        return result.tolist()
+
+
     @staticmethod
     def scale_l_to_0_100(lab_colors):
         """
@@ -687,8 +1007,173 @@ class VectorScale:
             return lab_np.tolist() if lab_np.shape[0] > 1 else lab_np[0].tolist()
         return lab_np if lab_np.shape[0] > 1 else lab_np[0]
     
+    def scale_l_to_0_100_me(labs: list, l_min: float, l_max: float, bpc: bool = False) -> list:
+        
+        labs = np.asarray(labs, dtype=np.float64)
+                
+        labs[:, 0] = labs[:, 0] - l_min 
+        labs[:, 0] = labs[:, 0] * 100.0 / (l_max - l_min)
+        labs[:, 0] = np.clip(labs[:, 0], 0, 100)
+        
+        # apply a blackpoint compensation to L 
+        # NOT WORKING
+        if bpc:
+            gamma: float = 2.2
+            bpc_start: float = 75.0
+            bpc_end: float = 0.0
+            
+            L = labs[:, 0]
+            mask = L < bpc_start
+            
+            L_norm = L[mask] / bpc_start
+            
+            L_gamma = np.power(L_norm, 1.0 / gamma)
+            print(f"scale_l_to_0_100_me: bpc_start={bpc_start}, gamma={gamma}, mask={mask}, L_norm={L_norm}, L_gamma={L_gamma}, min={np.min(L_gamma)}, max={np.max(L_gamma)}")
+            
+            labs[mask, 0] = L_gamma * bpc_start
+            
+            """ L = labs[:, 0]
+            mask = L < bpc_start
+            print(f"scale_l_to_0_100_me: bpc_start={bpc_start}, gamma={gamma}, mask={mask}")
+
+            # Normieren in [0,1] innerhalb [0, bpc_start]
+            L_norm = L[mask] / bpc_start
+            print(f"scale_l_to_0_100_me: L_norm={L_norm} / Length={len(L_norm)}")
+
+            # Gamma-Kurve → bleibt in [0,1]
+            L_curve = np.power(L_norm, 1.0 / gamma)
+
+            # Zurückskalieren auf [0, bpc_start]
+            L_bpc = L_curve * bpc_start
+
+            # Ersetzen nur der betroffenen Werte
+            labs[mask, 0] = L_bpc """
+
+        
+        return labs.tolist()
+    
+    @staticmethod
+    def scale_l_to_0_100_matrix(labs: list, l_min: float, l_max: float) -> list:
+        """
+        Linearly remap L* values to range 0–100 based on two reference indices.
+        a* and b* remain unchanged.
+
+        Args:
+            lab_colors (list): List of [L, a, b] values.
+            index_Min (int): Index of the LAB color with lowest L*.
+            index_Max (int): Index of the LAB color with highest L*.
+
+        Returns:
+            list: Scaled LAB colors.
+        """
+        
+        print(f"scale_l_to_0_100_matrix: l_min={l_min}, l_max={l_max}")
+        
+        # Convert input to NumPy array (handles lists and arrays)
+        lab = np.asarray(labs, dtype=np.float64)
+        
+        # Avoid division by zero (already handled by l_max > l_min check)
+        scale_L = 100.0 / (l_max - l_min)
+        offset_L = -scale_L * l_min
+        
+        print(f"scale_L: {scale_L}, offset_L: {offset_L}")
+        
+        # Apply scaling only to L* channel (faster than matrix multiplication)
+        lab_scaled = lab.copy()
+        lab_scaled[:, 0] = lab[:, 0] * scale_L + offset_L
+        
+        #print(f"Scaled LAB: {lab_scaled[0]}")  # Print a few samples for debugging
+        #darkest = np.min(lab_scaled[:, 0])
+        #print(f"Darkest L* after scaling: {darkest}")
+
+        # Return in same format as input
+        return lab_scaled.tolist()
+
     @staticmethod
     def scale_l_to_0_100_indexed(lab_colors, index_Min, index_Max):
+        """
+        Linearly scale L* values to the 0–100 range based on two indices.
+        a* and b* channels are left unchanged.
+
+        Args:
+            lab_colors (np.ndarray): Array of shape (N, 3) with LAB colors.
+            index_Min (int): Index of color to map L* to 0.
+            index_Max (int): Index of color to map L* to 100.
+
+        Returns:
+            np.ndarray: LAB array with scaled L* values.
+        """
+        lab_np = np.asarray(lab_colors, dtype=np.float64)
+        if lab_np.ndim == 1:
+            lab_np = lab_np[np.newaxis, :]
+
+        N = lab_np.shape[0]
+        if not (0 <= index_Min < N) or not (0 <= index_Max < N):
+            raise IndexError("index_Min or index_Max out of bounds")
+
+        l_min = lab_np[index_Min, 0]
+        l_max = lab_np[index_Max, 0]
+
+        if l_max == l_min:
+            return lab_np.copy()  # avoid modifying in place
+
+        # Scale L* channel
+        lab_scaled = lab_np.copy()
+        lab_scaled[:, 0] = (lab_scaled[:, 0] - l_min) * (100.0 / (l_max - l_min))
+        lab_scaled[:, 0] = np.clip(lab_scaled[:, 0], 0, 100)
+
+        return lab_scaled.tolist()
+
+    @staticmethod
+    def scale_l_to_0_100_indexed_OLD(lab_colors, index_Min, index_Max):
+        """
+        Forces L* channel to exactly 0-100 range (min → 0, max → 100)
+        while keeping a* and b* unchanged.
+
+        Args:
+            lab_colors: Input LAB colors (list of lists or NumPy array)
+            index_Min: Index for minimum L* (mapped to 0)
+            index_Max: Index for maximum L* (mapped to 100)
+
+        Returns:
+            LAB colors with L* remapped to 0-100 (same format as input)
+        """
+        
+        print(f"scale_l_to_0_100_indexed: index_Min={index_Min}, index_Max={index_Max}")
+        
+        
+        lab_np = np.asarray(lab_colors, dtype=np.float64)
+
+        # Handle single color (shape = [3,]) vs multiple colors (shape = [N,3])
+        if lab_np.ndim == 1:
+            lab_np = lab_np[np.newaxis, :]
+
+        L = lab_np[:, 0]  # Extract L* channel
+
+        # Use provided indices for min/max, fallback to np.min/np.max if out of bounds
+        l_min = lab_np[index_Min, 0] if 0 <= index_Min < len(lab_np) else np.min(L)
+        l_max = lab_np[index_Max, 0] if 0 <= index_Max < len(lab_np) else np.max(L)
+
+        if l_max == l_min:
+            # Avoid division by zero: return unchanged
+            return lab_np.tolist() if lab_np.shape[0] > 1 else lab_np[0].tolist()
+        else:
+            # Linearly remap L* so l_min → 0, l_max → 100
+            lab_np[:, 0] = (L - l_min) * (100.0 / (l_max - l_min))
+            # Clip L* to [0, 100]
+            lab_np[:, 0] = np.clip(lab_np[:, 0], 0, 100)
+
+        scaled_clut = lab_np.tolist()
+        print("LAB MAX:", scaled_clut[index_Max])
+        print("LAB MIN:", scaled_clut[index_Min])
+
+        # Return in the same format as input
+        if isinstance(lab_colors, list):
+            return lab_np.tolist() if lab_np.shape[0] > 1 else lab_np[0].tolist()
+        return lab_np if lab_np.shape[0] > 1 else lab_np[0]
+
+    @staticmethod
+    def scale_l_to_0_100_indexed_OLD(lab_colors, index_Min, index_Max):
         """
         Forces L* channel to exactly 0-100 range (min → 0, max → 100)
         while keeping a* and b* unchanged.

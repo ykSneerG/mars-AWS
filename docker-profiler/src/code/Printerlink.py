@@ -1,424 +1,6 @@
-from src.code.icctools.IccV4_ValueConverter import ICCvalueconverter as vc
-from src.code.icctools.IccV4_Elements import ICCheader_Prtr
-from src.code.icctools.IccV4_Elements import IccElements
-from src.code.Devicelink import DevicelinkBase
-
-
-class PrinterlinkV2:
-    """
-    ### Printerlink - Icc Profile Version 2
-    """
-
-    def __init__(self, params) -> None:
-
-        self.name = params.get("name", "Default Name")
-
-        """
-        icTagTypeSignature: mft2
-        Tag_Bytes: 91482
-        InputChan: 4
-        OutputChan: 3
-        Input_Entries: 256
-        Output_Entries: 256
-        Clut_Size: 11
-        """
-        self.wtpt = params.get("wtpt", [0.807, 0.829, 0.712])
-        self.bktp = params.get("bktp", [0.007, 0.008, 0.006])
-
-        self.atob0 = {
-            "InputChan": 4,
-            "OutputChan": 3,
-            "CLUT": params.get("atob0_clut", None),
-            "InputCurve": params.get("atob0_input_table", None),
-            "OutputCurve": params.get("atob0_output_table", None),
-        }
-        self.atob1 = {
-            "InputChan": 4,
-            "OutputChan": 3,
-            "CLUT": params.get("atob1_clut", None),
-            "InputCurve": params.get("atob1_input_table", None),
-            "OutputCurve": params.get("atob1_output_table", None),
-        }
-        self.atob2 = {
-            "InputChan": 4,
-            "OutputChan": 3,
-            "CLUT": params.get("atob2_clut", None),
-            "InputCurve": params.get("atob2_input_table", None),
-            "OutputCurve": params.get("atob2_output_table", None),
-        }
-        
-        self.btoa0 = {
-            "InputChan": 3,
-            "OutputChan": 4,
-            "CLUT": params.get("btoa0_clut", None), #[(i + 1) * 255 for i in range(32)],
-            "InputCurve": params.get("btoa0_input_table", None),
-            "OutputCurve": params.get("btoa0_output_table", None),
-        }
-        self.btoa1 = {
-            "InputChan": 3,
-            "OutputChan": 4,
-            "CLUT": params.get("btoa1_clut", None), #[(i + 1) * 255 for i in range(32)],
-            "InputCurve": params.get("btoa1_input_table", None),
-            "OutputCurve": params.get("btoa1_output_table", None),
-        }
-        self.btoa2 = {
-            "InputChan": 3,
-            "OutputChan": 4,
-            "CLUT": params.get("btoa2_clut", None), #[(i + 1) * 255 for i in range(32)],
-            "InputCurve": params.get("btoa2_input_table", None),
-            "OutputCurve": params.get("btoa2_output_table", None),
-        }
-
-        # self.input_channels: int = 4
-        self.input_type: str = "CMYK"
-        # self.output_channels: int = 3
-        self.output_type: str = "LAB "
-
-        self.output_table = params.get("output_table", None)
-
-        self.copyright = "Copyright by Heiko Pieper, Hannover/Germany 2024-2025. All rights reserved."
-        self.infotext: str = params.get("typenschild", "None")
-        self.description = params.get("description", f"ICC: {self.name}")
-
-        self.icc: bytearray = bytearray()
-
-        self.check: bool = True
-
-    def create(self):
-
-        profilesize: int = 128
-        tagstart: int = 128
-        tagentries: int = 0
-
-        # Entry - desc
-        en_desc = IccElements.entry_mluc(self.description)
-        en_desc_length = len(en_desc)
-        profilesize += en_desc_length
-        tagentries += 1
-
-        # Entry - cprt
-        en_cprt = IccElements.entry_mluc(self.copyright)
-        en_cprt_length = len(en_cprt)
-        profilesize += en_cprt_length
-        tagentries += 1
-
-        # Entry -wptp
-        en_wptp = IccElements.entry_wptp(self.wtpt)
-        en_wptp_length = len(en_wptp)
-        profilesize += en_wptp_length
-        tagentries += 1
-
-        # Entry - bkpt
-        en_bkpt = IccElements.entry_wptp(self.bktp)
-        en_bkpt_length = len(en_bkpt)
-        profilesize += en_bkpt_length
-        tagentries += 1
-
-        # Entry - mft2 -- A2B0
-        en_a2b0 = IccElements.entry_mft2(
-            num_input_channels=self.atob0["InputChan"],
-            num_output_channels=self.atob0["OutputChan"],
-            lut_table=self.atob0["CLUT"],
-            input_table=self.atob0["InputCurve"],
-            output_table=self.atob0["OutputCurve"],
-        )
-        en_a2b0_length = len(en_a2b0)
-        profilesize += en_a2b0_length
-        tagentries += 1
-
-        # Entry - mft2 -- B2A0
-        en_b2a0 = IccElements.entry_mft2(
-            num_input_channels=self.btoa0["InputChan"],
-            num_output_channels=self.btoa0["OutputChan"],
-            lut_table=self.btoa0["CLUT"],
-            input_table=self.btoa0["InputCurve"],
-            output_table=self.btoa0["OutputCurve"],
-        )
-        en_b2a0_length = len(en_b2a0)
-        profilesize += en_b2a0_length
-        tagentries += 1
-        # +++++++++++++++++++++++++++
-        # Entry - mft2 -- A2B0
-        en_a2b1 = IccElements.entry_mft2(
-            num_input_channels=self.atob1["InputChan"],
-            num_output_channels=self.atob1["OutputChan"],
-            lut_table=self.atob1["CLUT"],
-            input_table=self.atob1["InputCurve"],
-            output_table=self.atob1["OutputCurve"],
-            
-        )
-        en_a2b1_length = len(en_a2b1)
-        profilesize += en_a2b1_length
-        tagentries += 1
-
-        # Entry - mft2 -- B2A0
-        en_b2a1 = IccElements.entry_mft2(
-            num_input_channels=self.btoa1["InputChan"],
-            num_output_channels=self.btoa1["OutputChan"],
-            lut_table=self.btoa1["CLUT"],
-            input_table=self.btoa1["InputCurve"],
-            output_table=self.btoa1["OutputCurve"],
-        )
-        en_b2a1_length = len(en_b2a1)
-        profilesize += en_b2a1_length
-        tagentries += 1
-        # +++++++++++++++++++++++++++
-        # Entry - mft2 -- A2B0
-        en_a2b2 = IccElements.entry_mft2(
-            num_input_channels=self.atob2["InputChan"],
-            num_output_channels=self.atob2["OutputChan"],
-            lut_table=self.atob2["CLUT"],
-            input_table=self.atob2["InputCurve"],
-            output_table=self.atob2["OutputCurve"],
-        )
-        en_a2b2_length = len(en_a2b2)
-        #print(f"en_a2b2_length: {en_a2b2_length}")
-        profilesize += en_a2b2_length
-        tagentries += 1
-
-        # Entry - mft2 -- B2A0
-        en_b2a2 = IccElements.entry_mft2(
-            num_input_channels=self.btoa2["InputChan"],
-            num_output_channels=self.btoa2["OutputChan"],
-            lut_table=self.btoa2["CLUT"],
-            input_table=self.btoa2["InputCurve"],
-            output_table=self.btoa2["OutputCurve"],
-        )
-        en_b2a2_length = len(en_b2a2)
-        #print(f"en_b2a2_length: {en_b2a2_length}")
-        profilesize += en_b2a2_length
-        tagentries += 1
-        # +++++++++++++++++++++++++++
-
-        # Entry - pseq
-        """ en_pseq = IccElements.entry_pseq(None)
-        en_pseq_length = len(en_pseq)
-        profilesize += en_pseq_length
-        tagentries += 1 """
-
-        # Entry - clrt / colorantTableOutTag
-        """ en_clrt = IccElements.entry_clrt(self.output_channels)
-        en_clrt_length = len(en_clrt)
-        profilesize += en_clrt_length
-        tagentries += 1 """
-
-        # colorantTableTag (see 9.2.18) which is required only if the data colour space field is xCLR, where x is hexadecimal 2 to F (see 7.2.6);
-
-        # Entry - info
-        en_info = IccElements.entry_text(self.infotext)
-        en_info_length = len(en_info)
-        profilesize += en_info_length
-        tagentries += 1
-
-        # +++++++++++++++++++++++++++
-
-        print(f"TagTable tagentries - count: {tagentries}")
-        print(f"TagStart: {tagstart}")
-
-        # Tag Table - count (Anzahl der Eintraege in die Tagtable)
-        tt_count = vc.uint32_to_bytes(tagentries)
-        tt_count_length = len(tt_count)
-
-        profilesize += tt_count_length
-        tagstart += tt_count_length  # tagcount (4 bytes)
-        tagstart += tagentries * 12  # tagtables (every tagentry is 12 bytes)
-
-        # +++++++++++++++++++++++++++
-
-        # Tag Table - desc (Description)
-        tt_desc, tt_desc_length = IccElements.tag_table_head_extend(
-            "desc", tagstart, en_desc_length
-        )
-        profilesize += tt_desc_length
-        tagstart += en_desc_length
-
-        # Tag Table - cprt (Copyright)
-        tt_cprt, tt_cprt_length = IccElements.tag_table_head_extend(
-            "cprt", tagstart, en_cprt_length
-        )
-        profilesize += tt_cprt_length
-        tagstart += en_cprt_length
-
-        # +++++++++++++++++++++++++++
-
-        tt_wptp, tt_wptp_length = IccElements.tag_table_head_extend(
-            "wtpt", tagstart, en_wptp_length
-        )
-        profilesize += tt_wptp_length
-        tagstart += en_wptp_length
-
-        tt_bkpt, tt_bkpt_length = IccElements.tag_table_head_extend(
-            "bkpt", tagstart, en_bkpt_length
-        )
-        profilesize += tt_bkpt_length
-        tagstart += en_bkpt_length
-
-        # Tag Table - a2b0 (A2B0 Tabelle,...)
-        tt_a2b0, tt_a2b0_length = IccElements.tag_table_head_extend(
-            "A2B0", tagstart, en_a2b0_length
-        )
-        profilesize += tt_a2b0_length
-        tagstart += en_a2b0_length
-
-        tt_b2a0, tt_b2a0_length = IccElements.tag_table_head_extend(
-            "B2A0", tagstart, en_b2a0_length
-        )
-        profilesize += tt_b2a0_length
-        tagstart += en_b2a0_length
-
-        tt_a2b1, tt_a2b1_length = IccElements.tag_table_head_extend(
-            "A2B1", tagstart, en_a2b1_length
-        )
-        profilesize += tt_a2b1_length
-        tagstart += en_a2b1_length
-
-        tt_b2a1, tt_b2a1_length = IccElements.tag_table_head_extend(
-            "B2A1", tagstart, en_b2a1_length
-        )
-        profilesize += tt_b2a1_length
-        tagstart += en_b2a1_length
-
-        tt_a2b2, tt_a2b2_length = IccElements.tag_table_head_extend(
-            "A2B2", tagstart, en_a2b2_length
-        )
-        profilesize += tt_a2b2_length
-        tagstart += en_a2b2_length
-
-        tt_b2a2, tt_b2a2_length = IccElements.tag_table_head_extend(
-            "B2A2", tagstart, en_b2a2_length
-        )
-        profilesize += tt_b2a2_length
-        tagstart += en_b2a2_length
-
-        # Tag Table - pseq (Profile Sequence Description)
-        """ tt_pseq, tt_pseq_length = IccElements.tag_table_head_extend("pseq", tagstart, en_pseq_length)
-        profilesize += tt_pseq_length
-        tagstart += en_pseq_length """
-
-        # Tag Table - clrt (Colorant Table)
-        """ tt_clrt, tt_clrt_length = IccElements.tag_table_head_extend("clot", tagstart, en_clrt_length)
-        profilesize += tt_clrt_length
-        tagstart += en_clrt_length """
-
-        # Tag Table - info (unknown tag - info)
-        tt_info, tt_info_length = IccElements.tag_table_head_extend(
-            "info", tagstart, en_info_length
-        )
-        profilesize += tt_info_length
-        tagstart += en_info_length
-
-        # +++++ ICC Profile Header ++++++++++++++++++++++
-
-        head = ICCheader_Prtr()
-        head.dcs = self.input_type
-        head.pcs = self.output_type
-        header = head.header(profilesize)
-
-        bytesIcc = bytearray(header)
-
-        # +++++ Tag Table Count (Anzahl der Eintraege in die Tagtable) +++++++++++
-
-        bytesIcc.extend(tt_count)
-
-        # +++++ Tag Table +++++++++++
-
-        bytesIcc.extend(tt_desc)
-        self.check_size("tt_desc", tt_desc)
-        bytesIcc.extend(tt_cprt)
-        self.check_size("tt_cprt", tt_cprt)
-
-        bytesIcc.extend(tt_wptp)
-        self.check_size("tt_wptp", tt_wptp)
-
-        bytesIcc.extend(tt_bkpt)
-        self.check_size("tt_bkpt", tt_bkpt)
-
-        bytesIcc.extend(tt_a2b0)
-        self.check_size("tt_a2b0", tt_a2b0)
-        bytesIcc.extend(tt_b2a0)
-        self.check_size("tt_b2a0", tt_b2a0)
-
-        bytesIcc.extend(tt_a2b1)
-        self.check_size("tt_a2b1", tt_a2b1)
-        bytesIcc.extend(tt_b2a1)
-        self.check_size("tt_b2a1", tt_b2a1)
-
-        bytesIcc.extend(tt_a2b2)
-        self.check_size("tt_a2b2", tt_a2b2)
-        bytesIcc.extend(tt_b2a2)
-        self.check_size("tt_b2a2", tt_b2a2)
-
-        """ bytesIcc.extend(tt_pseq)
-        self.check_size("tt_pseq", tt_pseq)
-        bytesIcc.extend(tt_clrt)
-        self.check_size("tt_clrt", tt_clrt) """
-        bytesIcc.extend(tt_info)
-        self.check_size("tt_info", tt_info)
-
-        # +++++ Entry +++++++++++++++
-
-        bytesIcc.extend(en_desc)
-        self.check_size("en_desc", en_desc)
-        bytesIcc.extend(en_cprt)
-        self.check_size("en_cprt", en_cprt)
-
-        bytesIcc.extend(en_wptp)
-        self.check_size("en_wptp", en_wptp)
-
-        bytesIcc.extend(en_bkpt)
-        self.check_size("en_bkpt", en_bkpt)
-
-        bytesIcc.extend(en_a2b0)
-        self.check_size("en_a2b0", en_a2b0)
-        bytesIcc.extend(en_b2a0)
-        self.check_size("en_b2a0", en_b2a0)
-
-        bytesIcc.extend(en_a2b1)
-        self.check_size("en_a2b1", en_a2b1)
-        bytesIcc.extend(en_b2a1)
-        self.check_size("en_b2a1", en_b2a1)
-
-        bytesIcc.extend(en_a2b2)
-        self.check_size("en_a2b0", en_a2b2)
-        bytesIcc.extend(en_b2a2)
-        self.check_size("en_b2a0", en_b2a2)
-
-        """ bytesIcc.extend(en_pseq)
-        self.check_size("en_pseq", en_pseq)
-        bytesIcc.extend(en_clrt)
-        self.check_size("en_clrt", en_clrt) """
-        bytesIcc.extend(en_info)
-        self.check_size("en_info", en_info)
-
-        # +++++++++++++++++++++++++++
-
-        print(f"Length bytesIcc: {len(bytesIcc)}")
-        bytesIccWithCustomProfileId = ICCheader_Prtr.update_profile_id(bytesIcc)
-        self.icc = bytesIccWithCustomProfileId
-        return bytesIccWithCustomProfileId
-        """
-        self.icc = bytesIcc
-        return bytesIcc
-        """
-
-    def write(self, path) -> None:
-        if not path:
-            print("No path specified")
-            return
-        try:
-            with open(path, "wb") as f:
-                f.write(self.icc)
-            print(f"File written successfully to {path}")
-        except Exception as e:
-            print(f"Failed to write file to {path}: {str(e)}")
-
-    def check_size(self, name, element) -> None:
-        if not self.check:
-            return
-
-        print(f"{name}: {len(element)}")
-        div4 = (len(element) / 4) % 1 == 0
-        print(f"element div4: {div4}")
+from src.code.icctools.IccV4_Helper import Helper, ColorTrafo
+from src.code.icctools.MakeXtoX import MakeAtoB, MakeBtoA, MakeCurve
+from src.code.Devicelink import DevicelinkBase, PrinterlinkV2
 
 
 class Profile_Printer(DevicelinkBase):
@@ -426,10 +8,172 @@ class Profile_Printer(DevicelinkBase):
     This class creates a printer profile.
     """
 
-    def create(self):
-        #self.name += "_redirect"
-        #self.order = self.params.get("channel_order", None)
+    def __init__(self, params):
+        super().__init__(params)
+        
+        grid_size = params.get("grid_size")
+        if grid_size is None:
+            grid_size = {"atob": [9, 9, 9], "btoa": [11, 11, 11]}
 
+        atob = grid_size.get("atob", [11, 11, 9])
+        btoa = grid_size.get("btoa", [17, 21, 11])
+
+        self.grid_size_atob0 = atob[0]
+        self.grid_size_atob1 = atob[1]
+        self.grid_size_atob2 = atob[2]
+
+        self.grid_size_btoa0 = btoa[0]
+        self.grid_size_btoa1 = btoa[1]
+        self.grid_size_btoa2 = btoa[2]
+
+        self.dcss = params.get("dcss_src", None)
+        self.xyzs_abs = params.get("xyzs_src", None)
+        self.labs_abs = ColorTrafo.xyz_to_lab(self.xyzs_abs)
+
+        self.idx_light = 0
+        self.idx_dark = 10
+
+        # This is a workaround, needs imporvement
+        self.detect_darkest_neutral_point()
+        
+        self.wtpt = self.find_wtpt()
+        self.bktp = self.find_bktp()
+        
+        """ self.update_wtpt()
+        self.update_bktp() """
+        
+        self.xyzs_rel = ColorTrafo.media_relative(self.xyzs_abs, self.wtpt)
+        self.labs_rel = ColorTrafo.xyz_to_lab(self.xyzs_rel)
+        
+        self.gcr_result = {}
+        
+    def detect_darkest_neutral_point(self):
+        """
+        Detect the darkest neutral point in the absolute XYZ values.
+        This is used to find the black point for the profile.
+        """
+        if self.xyzs_abs is not None and len(self.xyzs_abs) > 0:
+            # Find the index of the darkest neutral point
+            idx_dark_neutral = min(range(len(self.labs_abs)), 
+                                key=lambda i: (self.labs_abs[i][0], abs(self.labs_abs[i][1]), abs(self.labs_abs[i][2])))
+            print("Darkest neutral point index:", idx_dark_neutral)
+            print("Darkest neutral point LAB:", self.labs_abs[idx_dark_neutral])
+            #print("Darkest neutral point XYZ:", self.xyzs_abs[idx_dark_neutral])
+            print("Darkest neutral point DCS:", self.dcss[idx_dark_neutral])
+
+            idx_dark_noneutral = min(range(len(self.labs_abs)), 
+                                key=lambda i: (self.labs_abs[i][0]))
+            print("Darkest non-neutral point index:", idx_dark_noneutral)
+            print("Darkest non-neutral point LAB:", self.labs_abs[idx_dark_noneutral])
+            #print("Darkest non-neutral point XYZ:", self.xyzs_abs[idx_dark_noneutral])
+            print("Darkest non-neutral point DCS:", self.dcss[idx_dark_noneutral])
+
+            # get index where self.dcss is closest to [0, 0, 0, 100]
+            idx_k100 = min(range(len(self.dcss)), 
+                                key=lambda i: sum(abs(self.dcss[i][j] - (0 if j < 3 else 100)) for j in range(len(self.dcss[i]))))
+            print("Closest to K100 index:", idx_k100)
+            print("Closest to K100 LAB:", self.labs_abs[idx_k100])
+            #print("Closest to K100 XYZ:", self.xyzs_abs[idx_k100])
+            print("Closest to K100 DCS:", self.dcss[idx_k100])
+            
+            
+            print("Last point index:", self.idx_dark)
+            print("Last point LAB:", self.labs_abs[self.idx_dark])
+            #print("Last point XYZ:", self.xyzs_abs[self.idx_dark])
+            print("Last point DCS:", self.dcss[self.idx_dark])
+            
+            self.idx_dark = idx_dark_noneutral
+
+    """ def update_wtpt(self):
+        # find index where sum self.dcss[i] is smallest
+        self.idx_light = max(range(len(self.dcss)), key=lambda i: sum(self.dcss[i]))
+        self.wtpt = self.find_wtpt()
+
+    def update_bktp(self):
+        # find index where with max L value in labs_abs and A and B values close to 0
+        self.idx_dark = min(range(len(self.labs_abs)), 
+                       key=lambda i: (self.labs_abs[i][0], abs(self.labs_abs[i][1]), abs(self.labs_abs[i][2])))
+        self.bktp = self.find_bktp()
+        
+        #self.idx_dark = min(range(len(self.labs_abs)), key=lambda i: self.labs_abs[i][0]) """
+
+    def find_wtpt(self):
+        if self.xyzs_abs is not None and len(self.xyzs_abs) > 0:            
+            return self.xyzs_abs[self.idx_light]
+        return [0.807, 0.829, 0.712]
+    
+    def find_bktp(self):
+        if self.xyzs_abs is not None and len(self.xyzs_abs) > 0:
+            return self.xyzs_abs[self.idx_dark]
+        return [0.007, 0.008, 0.006]
+    
+    @staticmethod
+    def build_btoa_table(dcs, lut, grid_size, info):
+        make_btoa0 = MakeBtoA(dcs, lut, grid_size)
+        make_btoa0.generate()
+        make_btoa0.report(info)
+        return make_btoa0
+    
+    def build_atob_table(self, id = 0) -> MakeAtoB:
+        atob = MakeAtoB(self.labs_rel.copy(), self.dcss)
+        atob.index_lightest = self.idx_light
+        atob.index_darkest = self.idx_dark
+        print("MakeAtoB Lightest Index: ", atob.index_lightest)
+        print("MakeAtoB Darkest Index: ", atob.index_darkest)
+        
+        if id == 0:
+            atob.generate_perceptual()
+            atob.interpolate_clut(self.grid_size_atob0)
+            atob.report("PERCEPTUAL")
+        elif id == 1:
+            atob.generate_relative()
+            atob.interpolate_clut(self.grid_size_atob1)
+            atob.report("RELATIVE")
+        elif id == 2:
+            atob.generate_saturation()
+            atob.interpolate_clut(self.grid_size_atob2)
+            atob.report("SATURATION")
+            
+        return atob
+    
+    def report_absolute(self):
+        
+        print("- + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + - + -")
+        print("Channel Count: ", len(self.dcss[0]))
+        print("")
+        print("ABSOLUTE\tLightest - Index: ", 0, "\t\tLAB: ", Helper.round_list(self.labs_abs[self.idx_light], 4))
+        print("ABSOLUTE\tDarkest. - Index: ", len(self.labs_abs) - 1, "\tLAB: ", Helper.round_list(self.labs_abs[self.idx_dark], 4))
+        print("")
+
+    def create(self):
+        
+        self.report_absolute()
+        
+        make_atob0 = self.build_atob_table(0)
+        make_atob1 = self.build_atob_table(1)
+        make_atob2 = self.build_atob_table(2)
+        
+        make_btoa0 = self.build_btoa_table(make_atob0.dcs, make_atob0.clut, self.grid_size_btoa0, "PERCEPTUAL")
+        make_btoa1 = self.build_btoa_table(make_atob1.dcs, make_atob1.clut, self.grid_size_btoa1, "RELATIVE")
+        make_btoa2 = self.build_btoa_table(make_atob2.dcs, make_atob2.clut, self.grid_size_btoa2, "SATURATION")
+        
+
+        # Verify GCR BtoA1
+        interp = make_btoa1.get_interpolator()
+        self.gcr_result = interp.verify_GCR(100)
+
+
+        self.params.update({
+            'wtpt': self.wtpt,
+            'bktp': self.bktp,
+            'atob0_clut': make_atob0.clut_as_uint16,
+            'atob1_clut': make_atob1.clut_as_uint16,
+            'atob2_clut': make_atob2.clut_as_uint16,
+            'btoa0_clut': make_btoa0.clut_as_uint16,
+            'btoa1_clut': make_btoa1.clut_as_uint16,
+            'btoa2_clut': make_btoa2.clut_as_uint16,
+        })
+        
         self.params["typenschild"] = DevicelinkBase.generate_typenschild(
             info="This is a printer profile.",
             name=self.name,

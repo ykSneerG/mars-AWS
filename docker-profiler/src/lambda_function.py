@@ -17,3 +17,8 @@ def lambda_handler_download(event, context):
     from src.handlers_base import DownloadHandler
     handler = DownloadHandler(event, context)
     return handler.handle()
+
+def lambda_handler_printerlink(event, context):
+    from src.handlers_prtr import PrtrHandler
+    handler = PrtrHandler(event, context)
+    return handler.handle()
